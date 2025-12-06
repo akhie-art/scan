@@ -1,0 +1,2071 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>ScanPro - Pemindai Dokumen Profesional</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
+      defer
+    ></script>
+    <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
+
+    <script
+      async
+      src="node_modules/@techstark/opencv-js/dist/opencv.js"
+      onload="onOpenCvReady()"
+    ></script>
+    <script>
+      // Variabel global untuk status OpenCV
+      var cvReady = false;
+      function onOpenCvReady() {
+        cvReady = true;
+        console.log("OpenCV.js siap digunakan.");
+      }
+    </script>
+
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
+
+      * {
+        font-family: "Inter", sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+
+      body {
+        background: #fafafa;
+        min-height: 100vh;
+      }
+
+      .card {
+        background: #ffffff;
+        border: 1px solid #e5e5e5;
+        transition: all 0.2s ease;
+      }
+
+      .card:hover {
+        border-color: #d4d4d4;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+      }
+
+      .btn {
+        transition: all 0.15s ease;
+        font-weight: 500;
+        letter-spacing: -0.01em;
+      }
+
+      .btn-primary {
+        background: #171717;
+        color: white;
+      }
+
+      .btn-primary:hover {
+        background: #404040;
+      }
+
+      .btn-secondary {
+        background: #f5f5f5;
+        color: #171717;
+        border: 1px solid #e5e5e5;
+      }
+
+      .btn-secondary:hover {
+        background: #e5e5e5;
+      }
+
+      /* ================================================= */
+      /* CSS Sudut dan Batas */
+      /* ================================================= */
+      .corner {
+        width: 20px;
+        height: 20px;
+        background: #fff;
+        border-radius: 50%;
+        border: 2px solid #171717;
+        box-shadow: 0 0 0 3px white, 0 0 0 5px #171717,
+          0 2px 8px rgba(0, 0, 0, 0.2);
+        position: absolute;
+        transform: translate(-50%, -50%);
+        cursor: grab;
+        z-index: 20;
+        transition: all 0.2s ease;
+      }
+
+      .corner:hover {
+        transform: translate(-50%, -50%) scale(1.15);
+        border-color: #2563eb;
+        box-shadow: 0 0 0 3px white, 0 0 0 6px #2563eb,
+          0 4px 12px rgba(0, 0, 0, 0.3);
+      }
+
+      .corner:active {
+        cursor: grabbing;
+        border-color: #dc2626;
+        box-shadow: 0 0 0 3px white, 0 0 0 6px #dc2626,
+          0 5px 18px rgba(0, 0, 0, 0.4);
+      }
+
+      .overlay-mask {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 10;
+      }
+
+      /* Garis batas poligon yang jelas */
+      #maskPolygon {
+        fill: black;
+        stroke: #f5f5f5; /* Garis luar putih/abu-abu terang */
+        stroke-width: 4; /* Ketebalan garis */
+      }
+
+      .overlay-mask rect {
+        fill: rgba(0, 0, 0, 0.6);
+      }
+      /* ================================================= */
+
+      input[type="range"] {
+        -webkit-appearance: none;
+        appearance: none;
+        height: 4px;
+        background: #e5e5e5;
+        border-radius: 4px;
+        outline: none;
+      }
+
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 16px;
+        height: 16px;
+        background: #171717;
+        border-radius: 50%;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      input[type="range"]::-webkit-slider-thumb:hover {
+        transform: scale(1.2);
+      }
+
+      .filter-btn {
+        padding: 8px 14px;
+        background: #fafafa;
+        border: 1px solid #e5e5e5;
+        border-radius: 6px;
+        font-size: 0.813rem;
+        font-weight: 500;
+        transition: all 0.15s ease;
+        color: #525252;
+      }
+
+      .filter-btn:hover {
+        background: #f5f5f5;
+        border-color: #d4d4d4;
+        color: #171717;
+      }
+
+      .filter-btn.active {
+        background: #171717;
+        color: white;
+        border-color: #171717;
+      }
+
+      .loading-spinner {
+        border: 2px solid #f5f5f5;
+        border-top-color: #171717;
+        border-radius: 50%;
+        width: 32px;
+        height: 32px;
+        animation: spin 0.7s linear infinite;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      .fade-in {
+        animation: fadeIn 0.3s ease-out;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+
+      #mainCanvas,
+      #filterCanvas {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+        border-radius: 4px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+      }
+
+      .divider {
+        height: 1px;
+        background: #e5e5e5;
+      }
+
+      /* Tambahan untuk kamera */
+      #cameraFeed {
+        width: 100%;
+        height: auto;
+        min-height: 500px;
+        object-fit: cover;
+        transform: scaleX(-1); /* Membalikkan tampilan (mirip selfie) */
+      }
+    </style>
+  </head>
+
+  <body x-data="scannerApp()" x-init="init()">
+    <div
+      x-show="loading"
+      x-cloak
+      class="fixed inset-0 bg-white bg-opacity-95 flex items-center justify-center z-50"
+    >
+      <div class="flex flex-col items-center space-y-3">
+        <div class="loading-spinner"></div>
+        <span
+          class="text-sm font-medium text-neutral-600"
+          x-text="loadingText"
+        ></span>
+      </div>
+    </div>
+
+    <div
+      x-show="toast.show"
+      x-cloak
+      class="fixed bottom-6 right-6 z-50 fade-in"
+      @click="toast.show = false"
+    >
+      <div
+        class="card rounded-lg px-5 py-3 shadow-lg flex items-center space-x-3 cursor-pointer max-w-sm"
+      >
+        <svg
+          class="w-5 h-5 flex-shrink-0"
+          :class="toast.type === 'success' ? 'text-green-600' : 'text-red-600'"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+          ></path>
+        </svg>
+        <span
+          class="text-sm font-medium text-neutral-800"
+          x-text="toast.message"
+        ></span>
+      </div>
+    </div>
+
+    <div
+      x-show="showDeleteModal"
+      x-cloak
+      class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+    >
+      <div
+        @click.away="showDeleteModal = false"
+        class="card rounded-lg w-full max-w-sm p-6 fade-in"
+      >
+        <h3 class="text-lg font-semibold text-neutral-900 mb-2">
+          Konfirmasi Penghapusan
+        </h3>
+        <p class="text-sm text-neutral-600 mb-6">
+          Apakah Anda yakin ingin menghapus dokumen
+          <span x-text="current.name" class="font-medium"></span>? Aksi ini
+          tidak dapat dibatalkan.
+        </p>
+
+        <div class="flex justify-end space-x-3">
+          <button
+            @click="showDeleteModal = false"
+            class="btn btn-secondary px-4 py-2 rounded-lg text-sm"
+          >
+            Batal
+          </button>
+          <button
+            @click="confirmRemoveImage()"
+            class="px-4 py-2 rounded-lg text-sm font-medium bg-red-600 text-white hover:bg-red-700 transition"
+          >
+            Hapus Permanen
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <header class="bg-white border-b border-neutral-200 sticky top-0 z-30">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex items-center justify-between h-14">
+          <div class="flex items-center space-x-3">
+            <button
+              @click="goToGallery()"
+              class="text-neutral-600 hover:text-neutral-900 transition p-1.5 rounded-md hover:bg-neutral-50"
+              title="Kembali ke Galeri"
+            >
+              <svg
+                class="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M10 19l-7-7m0 0l7-7m-7 7h18"
+                ></path>
+              </svg>
+            </button>
+            <div>
+              <h1 class="font-semibold text-lg text-neutral-900">ScanPro</h1>
+            </div>
+          </div>
+
+          <div class="flex items-center space-x-3">
+            <button
+              @click="openFileInput"
+              class="btn btn-secondary px-3 py-2 rounded-lg text-sm flex items-center space-x-2"
+            >
+              <svg
+                class="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                ></path>
+              </svg>
+              <span>Unggah</span>
+            </button>
+
+            <button
+              @click="goToCamera()"
+              class="btn btn-primary px-3 py-2 rounded-lg text-sm flex items-center space-x-2"
+            >
+              <svg
+                class="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.364A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.364A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+                ></path>
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
+                ></path>
+              </svg>
+              <span>Kamera</span>
+            </button>
+          </div>
+          <input
+            id="fileInput"
+            type="file"
+            accept="image/*"
+            class="hidden"
+            @change="onFiles($event)"
+            multiple
+          />
+        </div>
+      </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <section x-show="page === 'gallery'" x-transition class="fade-in">
+        <div class="mb-6">
+          <h2 class="text-2xl font-semibold text-neutral-900 mb-1">Dokumen</h2>
+          <p class="text-sm text-neutral-500">
+            Kelola dokumen hasil pindai Anda
+          </p>
+        </div>
+
+        <div
+          x-show="images.length === 0"
+          class="card rounded-xl p-16 text-center"
+        >
+          <div class="flex justify-center mb-5">
+            <div class="bg-neutral-100 rounded-full p-6">
+              <svg
+                class="w-12 h-12 text-neutral-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.5"
+                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                ></path>
+              </svg>
+            </div>
+          </div>
+          <h3 class="text-lg font-semibold text-neutral-900 mb-2">
+            Belum ada dokumen
+          </h3>
+          <p class="text-sm text-neutral-500 mb-6">
+            Unggah gambar atau gunakan kamera untuk mulai memindai
+          </p>
+          <button
+            @click="openFileInput"
+            class="btn btn-primary px-5 py-2.5 rounded-lg text-sm inline-flex items-center space-x-2"
+          >
+            <svg
+              class="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+              ></path>
+            </svg>
+            <span>Unggah Dokumen</span>
+          </button>
+        </div>
+
+        <div
+          class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4"
+        >
+          <template x-for="(item, idx) in images" :key="idx">
+            <div class="card rounded-lg overflow-hidden">
+              <button
+                @click="selectImage(idx); goToCrop()"
+                class="w-full h-44 bg-neutral-50 flex items-center justify-center p-3 relative group"
+              >
+                <img
+                  :src="item.url"
+                  class="object-contain w-full h-full rounded"
+                  :alt="item.name"
+                />
+                <div
+                  class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-5 transition-all"
+                ></div>
+              </button>
+
+              <div class="p-3">
+                <h3
+                  class="text-xs font-medium text-neutral-700 truncate mb-2"
+                  x-text="item.name"
+                ></h3>
+
+                <div class="flex items-center space-x-2">
+                  <button
+                    @click.stop="selectImage(idx); goToCrop()"
+                    class="flex-1 px-2.5 py-1.5 bg-neutral-900 text-white rounded text-xs font-medium hover:bg-neutral-700 transition"
+                  >
+                    Pangkas
+                  </button>
+                  <button
+                    @click.stop="selectImage(idx); goToFilter()"
+                    class="flex-1 px-2.5 py-1.5 bg-neutral-100 text-neutral-700 rounded text-xs font-medium hover:bg-neutral-200 transition"
+                  >
+                    Filter
+                  </button>
+                  <button
+                    @click.stop="promptRemoveImage(idx)"
+                    class="p-1.5 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded transition"
+                    title="Hapus"
+                  >
+                    <svg
+                      class="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      ></path>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+      </section>
+
+      <section x-show="page === 'camera'" x-transition class="fade-in">
+        <div class="card rounded-lg p-5">
+          <div
+            class="flex items-center justify-between mb-5 pb-4 border-b border-neutral-200"
+          >
+            <div>
+              <h3 class="text-lg font-semibold text-neutral-900 mb-0.5">
+                Ambil Gambar Dokumen
+              </h3>
+              <p class="text-xs text-neutral-500">
+                Arahkan kamera ke dokumen dan pastikan pencahayaan cukup.
+              </p>
+            </div>
+            <button
+              @click="stopCamera(); goToGallery()"
+              class="btn btn-secondary px-3 py-2 rounded-lg text-sm"
+            >
+              Kembali
+            </button>
+          </div>
+
+          <div
+            class="relative bg-neutral-900 rounded-lg flex items-center justify-center overflow-hidden"
+            style="min-height: 500px"
+          >
+            <video
+              id="cameraFeed"
+              autoplay
+              playsinline
+              x-show="cameraStream"
+              class="rounded-lg"
+            ></video>
+
+            <div x-show="!cameraStream" class="text-center text-white p-12">
+              <svg
+                class="w-12 h-12 mx-auto mb-3"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.364A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.364A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+                ></path>
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
+                ></path>
+              </svg>
+              <p class="text-sm font-medium">Memuat kamera...</p>
+            </div>
+
+            <button
+              @click="captureImage()"
+              :disabled="!cameraStream"
+              class="absolute bottom-5 w-16 h-16 bg-white bg-opacity-90 rounded-full flex items-center justify-center border-4 border-neutral-500 hover:border-black transition disabled:opacity-50"
+              title="Ambil Gambar"
+            >
+              <svg
+                class="w-6 h-6 text-neutral-900"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.364A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.364A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+                ></path>
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
+                ></path>
+              </svg>
+            </button>
+
+            <canvas id="hiddenCanvas" class="hidden"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <section x-show="page === 'crop'" x-transition class="fade-in">
+        <div class="card rounded-lg p-5">
+          <div
+            class="flex items-center justify-between mb-5 pb-4 border-b border-neutral-200"
+          >
+            <div>
+              <h3 class="text-lg font-semibold text-neutral-900 mb-0.5">
+                Sesuaikan Batas
+              </h3>
+              <p class="text-xs text-neutral-500" x-text="current.name"></p>
+            </div>
+
+            <div class="flex items-center space-x-2">
+              <button
+                @click="autoDetect()"
+                :disabled="!cvReady"
+                class="btn btn-secondary px-3 py-2 rounded-lg text-sm flex items-center space-x-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <svg
+                  class="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M13 10V3L4 14h7v7l9-11h-7z"
+                  ></path>
+                </svg>
+                <span>Otomatis</span>
+              </button>
+
+              <button
+                @click="autoScan()"
+                :disabled="!cvReady"
+                class="btn btn-secondary px-3 py-2 rounded-lg text-sm flex items-center space-x-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <svg
+                  class="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"
+                  ></path>
+                </svg>
+                <span>Pindai Cepat</span>
+              </button>
+
+              <button
+                @click="processCropAndPerspective()"
+                class="btn btn-primary px-4 py-2 rounded-lg text-sm flex items-center space-x-1.5"
+              >
+                <span>Lanjutkan</span>
+                <svg
+                  class="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M9 5l7 7-7 7"
+                  ></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div
+            class="relative bg-neutral-50 rounded-lg p-4 flex items-center justify-center"
+            style="min-height: 500px"
+          >
+            <div
+              x-show="current.url"
+              class="relative"
+              id="imageWrap"
+              style="display: inline-block"
+            >
+              <canvas id="mainCanvas"></canvas>
+
+              <div class="corner" id="c1" data-left="0" data-top="0"></div>
+              <div class="corner" id="c2" data-left="0" data-top="0"></div>
+              <div class="corner" id="c3" data-left="0" data-top="0"></div>
+              <div class="corner" id="c4" data-left="0" data-top="0"></div>
+
+              <div class="overlay-mask">
+                <svg>
+                  <defs>
+                    <mask id="mask">
+                      <rect
+                        x="0"
+                        y="0"
+                        width="100%"
+                        height="100%"
+                        fill="white"
+                      ></rect>
+                      <polygon
+                        id="maskPolygon"
+                        points="10,10 90,10 90,90 10,90"
+                        fill="black"
+                      ></polygon>
+                    </mask>
+                  </defs>
+                  <rect
+                    x="0"
+                    y="0"
+                    width="100%"
+                    height="100%"
+                    fill="rgba(0,0,0,0.6)"
+                    mask="url(#mask)"
+                  ></rect>
+                </svg>
+              </div>
+            </div>
+
+            <div x-show="!current.url" class="text-center">
+              <svg
+                class="w-12 h-12 mx-auto text-neutral-300 mb-3"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.5"
+                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                ></path>
+              </svg>
+              <p class="text-sm text-neutral-500">Pilih gambar dari galeri</p>
+            </div>
+          </div>
+
+          <div
+            class="mt-4 flex items-center justify-between text-xs text-neutral-500"
+          >
+            <span
+              x-text="cvReady ? 'Seret sudut untuk memilih area dokumen.' : 'Memuat OpenCV untuk deteksi otomatis...' "
+            ></span>
+            <button
+              @click="resetCrop()"
+              class="text-neutral-700 hover:text-neutral-900 font-medium"
+            >
+              Atur Ulang
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section x-show="page === 'filter'" x-transition class="fade-in">
+        <div class="card rounded-lg p-5">
+          <div
+            class="flex items-center justify-between mb-5 pb-4 border-b border-neutral-200"
+          >
+            <div>
+              <h3 class="text-lg font-semibold text-neutral-900 mb-0.5">
+                Perindah Dokumen
+              </h3>
+              <p class="text-xs text-neutral-500">
+                Terapkan filter dan penyesuaian
+              </p>
+            </div>
+
+            <div class="flex items-center space-x-2">
+              <button
+                @click="undo()"
+                :disabled="history.length <= 1"
+                class="btn btn-secondary px-3 py-2 rounded-lg text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Urungkan
+              </button>
+
+              <button
+                @click="downloadDocument()"
+                class="btn btn-secondary px-3 py-2 rounded-lg text-sm flex items-center space-x-1.5"
+              >
+                <svg
+                  class="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                  ></path>
+                </svg>
+                <span>Unduh</span>
+              </button>
+
+              <button
+                @click="done()"
+                class="btn btn-primary px-4 py-2 rounded-lg text-sm flex items-center space-x-1.5"
+              >
+                <svg
+                  class="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M5 13l4 4L19 7"
+                  ></path>
+                </svg>
+                <span>Simpan</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="grid lg:grid-cols-3 gap-6">
+            <div class="lg:col-span-2">
+              <div
+                class="bg-neutral-50 rounded-lg p-4 flex items-center justify-center"
+                style="min-height: 500px"
+              >
+                <canvas id="filterCanvas"></canvas>
+              </div>
+            </div>
+
+            <div class="space-y-5">
+              <div>
+                <h4 class="text-sm font-semibold text-neutral-900 mb-3">
+                  Preset Filter
+                </h4>
+
+                <div class="grid grid-cols-2 gap-2">
+                  <button
+                    @click="applyPreset('original')"
+                    :class="activePreset === 'original' ? 'active' : ''"
+                    class="filter-btn"
+                  >
+                    Asli
+                  </button>
+                  <button
+                    @click="applyPreset('clean')"
+                    :class="activePreset === 'clean' ? 'active' : ''"
+                    class="filter-btn"
+                  >
+                    Bersih
+                  </button>
+                </div>
+              </div>
+
+              <div class="divider"></div>
+
+              <div>
+                <h4 class="text-sm font-semibold text-neutral-900 mb-3">
+                  Penyesuaian Manual
+                </h4>
+
+                <div class="space-y-4">
+                  <div>
+                    <label
+                      class="flex justify-between items-center text-xs font-medium text-neutral-600 mb-2"
+                    >
+                      <span>Kecerahan</span>
+                      <span
+                        class="text-neutral-900 font-semibold"
+                        x-text="brightness"
+                      ></span>
+                    </label>
+                    <input
+                      type="range"
+                      min="-100"
+                      max="100"
+                      step="1"
+                      x-model.number="brightness"
+                      @input="applySliders(); pushHistory(false)"
+                      @change="pushHistory(true); activePreset = null"
+                      class="w-full"
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      class="flex justify-between items-center text-xs font-medium text-neutral-600 mb-2"
+                    >
+                      <span>Kontras</span>
+                      <span
+                        class="text-neutral-900 font-semibold"
+                        x-text="contrast"
+                      ></span>
+                    </label>
+                    <input
+                      type="range"
+                      min="-100"
+                      max="100"
+                      step="1"
+                      x-model.number="contrast"
+                      @input="applySliders(); pushHistory(false)"
+                      @change="pushHistory(true); activePreset = null"
+                      class="w-full"
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      class="flex justify-between items-center text-xs font-medium text-neutral-600 mb-2"
+                    >
+                      <span>Saturasi</span>
+                      <span
+                        class="text-neutral-900 font-semibold"
+                        x-text="saturation"
+                      ></span>
+                    </label>
+                    <input
+                      type="range"
+                      min="-100"
+                      max="100"
+                      step="1"
+                      x-model.number="saturation"
+                      @input="applySliders(); pushHistory(false)"
+                      @change="pushHistory(true); activePreset = null"
+                      class="w-full"
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      class="flex justify-between items-center text-xs font-medium text-neutral-600 mb-2"
+                    >
+                      <span>Ketajaman</span>
+                      <span
+                        class="text-neutral-900 font-semibold"
+                        x-text="sharpness"
+                      ></span>
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="1"
+                      x-model.number="sharpness"
+                      @input="applySliders(); pushHistory(false)"
+                      @change="pushHistory(true); activePreset = null"
+                      class="w-full"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  @click="resetAdjustments(); applySliders(); pushHistory(true)"
+                  class="w-full mt-4 btn btn-secondary px-4 py-2 rounded-lg text-sm"
+                >
+                  Atur Ulang Penyesuaian
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      function scannerApp() {
+        return {
+          page: "gallery",
+          images: [],
+          currentIndex: null,
+          history: [],
+          loading: false,
+          loadingText: "Memproses...",
+          brightness: 0,
+          contrast: 0,
+          saturation: 0,
+          sharpness: 0,
+          activePreset: null,
+          toast: { show: false, message: "", type: "success" },
+
+          showDeleteModal: false,
+          deleteIndex: null,
+
+          // Variabel baru untuk fitur Kamera
+          cameraStream: null,
+          cameraIndex: 0,
+
+          init() {
+            this.initDraggableCorners();
+            this.loadFromStorage();
+          },
+
+          // === CAMERA LOGIC ===
+          goToCamera() {
+            this.page = "camera";
+            this.$nextTick(() => this.startCamera());
+          },
+
+          async startCamera() {
+            this.loading = true;
+            this.loadingText = "Meminta akses kamera...";
+
+            const video = document.getElementById("cameraFeed");
+
+            // Menghentikan stream lama jika ada
+            this.stopCamera();
+
+            try {
+              // Mengakses kamera belakang jika tersedia (environment)
+              const constraints = {
+                video: {
+                  facingMode: "environment",
+                  width: { ideal: 1920 },
+                  height: { ideal: 1080 },
+                },
+              };
+
+              const stream = await navigator.mediaDevices.getUserMedia(
+                constraints
+              );
+              video.srcObject = stream;
+              this.cameraStream = stream;
+
+              video.onloadedmetadata = () => {
+                video.play();
+                this.loading = false;
+                this.showToast("Kamera aktif", "success");
+              };
+            } catch (err) {
+              this.loading = false;
+              console.error("Gagal mengakses kamera: ", err);
+              this.showToast("Gagal mengakses kamera.", "error");
+              this.page = "gallery";
+            }
+          },
+
+          stopCamera() {
+            if (this.cameraStream) {
+              this.cameraStream.getTracks().forEach((track) => track.stop());
+              this.cameraStream = null;
+            }
+          },
+
+          captureImage() {
+            this.loading = true;
+            this.loadingText = "Menangkap gambar...";
+
+            const video = document.getElementById("cameraFeed");
+            const canvas = document.getElementById("hiddenCanvas");
+
+            if (!video || !this.cameraStream) {
+              this.loading = false;
+              this.showToast("Kamera belum aktif.", "error");
+              return;
+            }
+
+            // Menyesuaikan dimensi canvas dengan resolusi video
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext("2d");
+
+            // Menggambar frame video ke canvas
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            const imageDataUrl = canvas.toDataURL("image/jpeg", 0.9); // Menggunakan JPEG untuk ukuran file lebih kecil
+
+            this.stopCamera();
+
+            // Menambahkan gambar yang ditangkap ke galeri
+            this.cameraIndex++;
+            this.images.push({
+              name: `Pindai-${this.cameraIndex}.jpg`,
+              url: imageDataUrl,
+              file: null,
+              canvas: null,
+            });
+
+            this.loading = false;
+            this.showToast("Gambar ditangkap. Silakan sesuaikan batas.");
+
+            // Pindah langsung ke halaman crop dengan gambar yang baru ditangkap
+            this.selectImage(this.images.length - 1);
+            this.goToCrop();
+          },
+          // === END CAMERA LOGIC ===
+
+          // === STORAGE (PERBAIKAN ERROR TYPERROR) ===
+          async loadFromStorage() {
+            try {
+              const stored = localStorage.getItem("scanpro-docs");
+              if (stored) {
+                this.images = JSON.parse(stored);
+              }
+            } catch (e) {
+              console.log("Tidak ada dokumen tersimpan atau gagal memuat.");
+            }
+          },
+
+          async saveToStorage() {
+            try {
+              localStorage.setItem("scanpro-docs", JSON.stringify(this.images));
+            } catch (e) {
+              console.error("Gagal menyimpan ke localStorage:", e);
+            }
+          },
+
+          // === TOAST ===
+          showToast(message, type = "success") {
+            this.toast = { show: true, message, type };
+            setTimeout(() => {
+              this.toast.show = false;
+            }, 3000);
+          },
+
+          // === NAVIGATION ===
+          goToGallery() {
+            this.stopCamera();
+            this.page = "gallery";
+            this.saveToStorage();
+          },
+
+          goToCrop() {
+            this.stopCamera();
+            this.page = "crop";
+            this.$nextTick(() => this.prepareCrop());
+          },
+
+          goToFilter() {
+            this.stopCamera();
+            this.page = "filter";
+            this.$nextTick(() => this.prepareFilter());
+          },
+
+          // === FILE HANDLING ===
+          openFileInput() {
+            document.getElementById("fileInput").click();
+          },
+
+          async onFiles(e) {
+            this.loading = true;
+            this.loadingText = "Mengunggah...";
+
+            const files = Array.from(e.target.files);
+
+            for (const file of files) {
+              const url = URL.createObjectURL(file);
+              this.images.push({
+                name: file.name,
+                url: url,
+                file: file,
+                canvas: null,
+              });
+            }
+
+            e.target.value = null;
+            this.loading = false;
+            this.showToast(`${files.length} dokumen ditambahkan`);
+            await this.saveToStorage();
+          },
+
+          selectImage(idx) {
+            this.currentIndex = idx;
+            this.resetAdjustments();
+            this.history = [];
+          },
+
+          // Fungsi untuk menampilkan modal hapus
+          promptRemoveImage(idx) {
+            this.deleteIndex = idx;
+            this.showDeleteModal = true;
+          },
+
+          // Fungsi untuk menghapus setelah konfirmasi
+          async confirmRemoveImage() {
+            const idx = this.deleteIndex;
+            if (idx !== null && idx >= 0 && idx < this.images.length) {
+              if (this.images[idx].url.startsWith("blob:")) {
+                URL.revokeObjectURL(this.images[idx].url);
+              }
+              this.images.splice(idx, 1);
+              this.showToast("Dokumen dihapus");
+              await this.saveToStorage();
+            }
+            this.showDeleteModal = false;
+            this.deleteIndex = null;
+          },
+
+          get current() {
+            return this.images[this.currentIndex] || {};
+          },
+
+          // === CROP/PERSPECTIVE LOGIC (OpenCV Maksimal) ===
+          initDraggableCorners() {
+            const self = this;
+            const wrap = document.getElementById("imageWrap");
+
+            ["c1", "c2", "c3", "c4"].forEach((id) => {
+              interact("#" + id).draggable({
+                listeners: {
+                  move(event) {
+                    const el = event.target;
+                    let left = parseFloat(el.getAttribute("data-left")) || 0;
+                    let top = parseFloat(el.getAttribute("data-top")) || 0;
+
+                    const newLeft = left + event.dx;
+                    const newTop = top + event.dy;
+
+                    const maxLeft = wrap ? wrap.clientWidth : 0;
+                    const maxTop = wrap ? wrap.clientHeight : 0;
+
+                    const finalLeft = Math.max(0, Math.min(maxLeft, newLeft));
+                    const finalTop = Math.max(0, Math.min(maxTop, newTop));
+
+                    el.style.left = finalLeft + "px";
+                    el.style.top = finalTop + "px";
+                    el.setAttribute("data-left", finalLeft);
+                    el.setAttribute("data-top", finalTop);
+
+                    self.updateMaskFromCorners();
+                  },
+                },
+              });
+            });
+          },
+
+          prepareCrop() {
+            if (!this.current || !this.current.url) return;
+
+            this.loading = true;
+            this.loadingText = "Memuat...";
+
+            const img = new Image();
+            img.src = this.current.url;
+            img.onload = () => {
+              const c = document.getElementById("mainCanvas");
+              const wrap = document.getElementById("imageWrap");
+
+              c.width = img.width;
+              c.height = img.height;
+              const ctx = c.getContext("2d", { willReadFrequently: true });
+              ctx.drawImage(img, 0, 0);
+
+              wrap.style.width = c.clientWidth + "px";
+              wrap.style.height = c.clientHeight + "px";
+
+              this.autoDetect(); // Panggil Auto Detect
+              this.loading = false;
+            };
+            img.onerror = () => {
+              this.loading = false;
+              this.showToast("Gagal memuat", "error");
+            };
+          },
+
+          updateMaskFromCorners() {
+            const c = document.getElementById("mainCanvas");
+            if (!c) return;
+
+            const wrap = document.getElementById("imageWrap");
+            const displayW = wrap.clientWidth;
+            const displayH = wrap.clientHeight;
+
+            const getDisplayCoords = (id) => {
+              const el = document.getElementById(id);
+              return {
+                x: parseFloat(el.getAttribute("data-left")) || 0,
+                y: parseFloat(el.getAttribute("data-top")) || 0,
+              };
+            };
+
+            const p1 = getDisplayCoords("c1");
+            const p2 = getDisplayCoords("c2");
+            const p3 = getDisplayCoords("c3");
+            const p4 = getDisplayCoords("c4");
+
+            const maskPolygon = document.getElementById("maskPolygon");
+            if (maskPolygon) {
+              const toPercent = (x, y) =>
+                `${(x / displayW) * 100},${(y / displayH) * 100}`;
+
+              const points = [p1, p2, p3, p4]
+                .map((p) => toPercent(p.x, p.y))
+                .join(" ");
+              maskPolygon.setAttribute("points", points);
+            }
+          },
+
+          /**
+           * Fungsi deteksi otomatis menggunakan OpenCV (Maksimal)
+           */
+          autoDetect() {
+            const c = document.getElementById("mainCanvas");
+            if (!c) return;
+
+            if (typeof cv !== "undefined" && cvReady) {
+              this.loading = true;
+              this.loadingText = "Deteksi otomatis dokumen...";
+
+              try {
+                let src = cv.imread(c);
+                let dst = new cv.Mat();
+                let gray = new cv.Mat();
+                cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
+
+                // 1. Gaussian Blur untuk mengurangi noise
+                cv.GaussianBlur(
+                  gray,
+                  gray,
+                  new cv.Size(5, 5),
+                  0,
+                  0,
+                  cv.BORDER_DEFAULT
+                );
+
+                // 2. Otsu Thresholding (Sangat efektif untuk dokumen)
+                cv.threshold(
+                  gray,
+                  dst,
+                  0,
+                  255,
+                  cv.THRESH_BINARY + cv.THRESH_OTSU
+                );
+
+                // 3. Canny Edge Detection
+                cv.Canny(dst, dst, 50, 150, 3, false);
+
+                // 4. Dilasi untuk menutup celah pada tepi (kernel 7x7)
+                let kernel = cv.Mat.ones(7, 7, cv.CV_8U);
+                cv.dilate(dst, dst, kernel);
+                kernel.delete();
+
+                let contours = new cv.MatVector();
+                let hierarchy = new cv.Mat();
+                cv.findContours(
+                  dst,
+                  contours,
+                  hierarchy,
+                  cv.RETR_EXTERNAL,
+                  cv.CHAIN_APPROX_SIMPLE
+                );
+
+                let maxArea = 0;
+                let bestContour = null;
+                // Batas area minimum (10% dari total area gambar)
+                const minAreaThreshold = c.width * c.height * 0.1;
+
+                // Cari kontur dengan area terbesar yang memiliki 4 sudut
+                for (let i = 0; i < contours.size(); ++i) {
+                  let contour = contours.get(i);
+                  let area = cv.contourArea(contour);
+
+                  if (area > maxArea && area > minAreaThreshold) {
+                    let perimeter = cv.arcLength(contour, true);
+                    let approx = new cv.Mat();
+                    // Epsilon 0.03 (longgar) untuk toleransi kelengkungan
+                    cv.approxPolyDP(contour, approx, 0.03 * perimeter, true);
+
+                    // Jika kontur memiliki 4 sudut
+                    if (approx.rows === 4) {
+                      maxArea = area;
+                      if (bestContour) bestContour.delete();
+                      bestContour = approx;
+                    } else {
+                      approx.delete();
+                    }
+                  }
+                  contour.delete();
+                }
+
+                if (bestContour) {
+                  const scaleX = c.clientWidth / c.width;
+                  const scaleY = c.height / c.clientHeight;
+
+                  // Urutkan 4 sudut
+                  const rawCorners = [];
+                  for (let i = 0; i < 4; i++) {
+                    rawCorners.push({
+                      x: bestContour.data32S[i * 2],
+                      y: bestContour.data32S[i * 2 + 1],
+                    });
+                  }
+
+                  const sortedCorners = this.sortCorners(rawCorners);
+
+                  // Set sudut di tampilan (menggunakan skala display)
+                  const setCorner = (id, x, y) => {
+                    const el = document.getElementById(id);
+                    const finalX = x * scaleX;
+                    const finalY = y * scaleY;
+
+                    el.style.left = finalX + "px";
+                    el.style.top = finalY + "px";
+                    el.setAttribute("data-left", finalX);
+                    el.setAttribute("data-top", finalY);
+                  };
+
+                  setCorner("c1", sortedCorners[0].x, sortedCorners[0].y); // Top-Left
+                  setCorner("c2", sortedCorners[1].x, sortedCorners[1].y); // Top-Right
+                  setCorner("c3", sortedCorners[2].x, sortedCorners[2].y); // Bottom-Right
+                  setCorner("c4", sortedCorners[3].x, sortedCorners[3].y); // Bottom-Left
+
+                  bestContour.delete();
+                  this.showToast("Batas dokumen terdeteksi otomatis.");
+                } else {
+                  this.simpleAutoDetect(c);
+                  this.showToast(
+                    "Gagal deteksi otomatis. Menggunakan batas standar. **Coba ratakan dokumen Anda.**"
+                  );
+                }
+
+                // Bersihkan memori OpenCV
+                src.delete();
+                dst.delete();
+                gray.delete();
+                contours.delete();
+                hierarchy.delete();
+              } catch (e) {
+                console.error("OpenCV Error:", e);
+                this.simpleAutoDetect(c);
+                this.showToast(
+                  "OpenCV Error. Menggunakan batas standar.",
+                  "error"
+                );
+              }
+              this.loading = false;
+            } else {
+              this.simpleAutoDetect(c);
+            }
+
+            this.updateMaskFromCorners();
+          },
+
+          /**
+           * Fungsi pembantu untuk mengurutkan sudut (diperlukan untuk Homografi)
+           * Urutan: Top-Left, Top-Right, Bottom-Right, Bottom-Left (TL, TR, BR, BL)
+           */
+          sortCorners(points) {
+            if (points.length !== 4) return points;
+
+            // Urutkan berdasarkan koordinat y (untuk membagi menjadi top dan bottom)
+            points.sort((a, b) => a.y - b.y);
+
+            const top = points.slice(0, 2);
+            const bottom = points.slice(2, 4);
+
+            // Urutkan baris atas (top) berdasarkan koordinat x: top[0]=TL, top[1]=TR
+            top.sort((a, b) => a.x - b.x);
+
+            // Urutkan baris bawah (bottom) berdasarkan koordinat x: bottom[0]=BL, bottom[1]=BR
+            bottom.sort((a, b) => a.x - b.x);
+
+            // Urutan akhir: TL, TR, BR, BL
+            return [top[0], top[1], bottom[1], bottom[0]];
+          },
+
+          /**
+           * Fallback deteksi margin tetap (sangat dasar).
+           */
+          simpleAutoDetect(c) {
+            const wDisplay = c.clientWidth;
+            const hDisplay = c.clientHeight;
+
+            const marginW = wDisplay * 0.04;
+            const marginH = hDisplay * 0.04;
+
+            const setCorner = (id, left, top) => {
+              const el = document.getElementById(id);
+              el.style.left = left + "px";
+              el.style.top = top + "px";
+              el.setAttribute("data-left", left);
+              el.setAttribute("data-top", top);
+            };
+
+            setCorner("c1", marginW, marginH);
+            setCorner("c2", wDisplay - marginW, marginH);
+            setCorner("c3", wDisplay - marginW, hDisplay - marginH);
+            setCorner("c4", marginW, hDisplay - marginH);
+          },
+
+          /**
+           * Fungsi inti untuk memproses Koreksi Perspektif.
+           */
+          async processCropAndPerspective(isAuto = false) {
+            return new Promise((resolve) => {
+              const c = document.getElementById("mainCanvas");
+              if (!c) {
+                this.goToFilter();
+                resolve();
+                return;
+              }
+
+              this.loading = true;
+              this.loadingText = "Menerapkan Koreksi Perspektif...";
+
+              const getCoords = (id) => {
+                const el = document.getElementById(id);
+                const scaleX = c.width / c.clientWidth;
+                const scaleY = c.height / c.clientHeight;
+
+                return {
+                  x: (parseFloat(el.getAttribute("data-left")) || 0) * scaleX,
+                  y: (parseFloat(el.getAttribute("data-top")) || 0) * scaleY,
+                };
+              };
+
+              // Urutan titik: Top-Left, Top-Right, Bottom-Right, Bottom-Left
+              const p1 = getCoords("c1");
+              const p2 = getCoords("c2");
+              const p3 = getCoords("c3");
+              const p4 = getCoords("c4");
+              const corners = [p1, p2, p3, p4];
+
+              const warpedDataUrl = this.applyPerspectiveWarp(c, corners);
+
+              if (this.images[this.currentIndex].url.startsWith("blob:")) {
+                URL.revokeObjectURL(this.images[this.currentIndex].url);
+              }
+
+              this.images[this.currentIndex].url = warpedDataUrl;
+              this.images[this.currentIndex].canvas = warpedDataUrl;
+
+              this.loading = false;
+
+              if (!isAuto) {
+                this.showToast("Dokumen dipangkas dan dikoreksi");
+                this.goToFilter();
+              }
+
+              resolve();
+            });
+          },
+
+          /**
+           * Menerapkan Perspective Warp menggunakan OpenCV.js atau Fallback.
+           */
+          applyPerspectiveWarp(sourceCanvas, corners) {
+            const w1 = Math.hypot(
+              corners[0].x - corners[1].x,
+              corners[0].y - corners[1].y
+            ); // Jarak Top
+            const w2 = Math.hypot(
+              corners[3].x - corners[2].x,
+              corners[3].y - corners[2].y
+            ); // Jarak Bottom
+            const outputWidth = Math.max(w1, w2);
+
+            const h1 = Math.hypot(
+              corners[0].x - corners[3].x,
+              corners[0].y - corners[3].y
+            ); // Jarak Left
+            const h2 = Math.hypot(
+              corners[1].x - corners[2].x,
+              corners[1].y - corners[2].y
+            ); // Jarak Right
+            const outputHeight = Math.max(h1, h2);
+
+            const destCanvas = document.createElement("canvas");
+            const destCtx = destCanvas.getContext("2d");
+
+            // --- KOREKSI PERSPEKTIF PROFESIONAL DENGAN OPENCV ---
+            if (typeof cv !== "undefined" && cvReady) {
+              console.log("Menggunakan OpenCV untuk Perspective Transform.");
+
+              // Periksa apakah dimensi output valid
+              if (outputWidth <= 0 || outputHeight <= 0) {
+                console.error(
+                  "Dimensi output tidak valid. Kembali ke fallback."
+                );
+                // Lanjutkan ke Fallback Bounding Box
+              } else {
+                destCanvas.width = outputWidth;
+                destCanvas.height = outputHeight;
+
+                let srcMat = cv.imread(sourceCanvas);
+                let dstMat = new cv.Mat();
+
+                // Matriks Sumber (4 titik dari kursor) - URUTAN: TL, TR, BR, BL
+                let srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
+                  corners[0].x,
+                  corners[0].y, // TL
+                  corners[1].x,
+                  corners[1].y, // TR
+                  corners[2].x,
+                  corners[2].y, // BR
+                  corners[3].x,
+                  corners[3].y, // BL
+                ]);
+
+                // Matriks Tujuan (persegi panjang sempurna)
+                let dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
+                  0,
+                  0,
+                  outputWidth,
+                  0,
+                  outputWidth,
+                  outputHeight,
+                  0,
+                  outputHeight,
+                ]);
+
+                let M = cv.getPerspectiveTransform(srcTri, dstTri);
+                cv.warpPerspective(
+                  srcMat,
+                  dstMat,
+                  M,
+                  new cv.Size(outputWidth, outputHeight)
+                );
+
+                // Tulis hasilnya ke canvas
+                cv.imshow(destCanvas, dstMat);
+
+                // Bersihkan memori
+                srcMat.delete();
+                dstMat.delete();
+                srcTri.delete();
+                dstTri.delete();
+                M.delete();
+
+                return destCanvas.toDataURL("image/png");
+              }
+            }
+
+            // FALLBACK: Cropping Bounding Box
+            console.warn(
+              "OpenCV tidak tersedia atau gagal. Menggunakan Cropping Bounding Box Sederhana."
+            );
+            const xs = corners.map((p) => p.x);
+            const ys = corners.map((p) => p.y);
+            const box = {
+              left: Math.min(...xs),
+              top: Math.min(...ys),
+              right: Math.max(...xs),
+              bottom: Math.max(...ys),
+            };
+            const w = box.right - box.left;
+            const h = box.bottom - box.top;
+            destCanvas.width = w;
+            destCanvas.height = h;
+            destCtx.drawImage(
+              sourceCanvas,
+              box.left,
+              box.top,
+              w,
+              h,
+              0,
+              0,
+              w,
+              h
+            );
+
+            return destCanvas.toDataURL("image/png");
+          },
+
+          async autoScan() {
+            if (!cvReady) {
+              this.showToast(
+                "OpenCV belum siap. Tidak dapat melakukan Pindai Cepat.",
+                "error"
+              );
+              return;
+            }
+            this.loadingText = "Memindai...";
+            this.autoDetect();
+            await this.processCropAndPerspective(true);
+            this.goToFilter();
+
+            this.$nextTick(() => {
+              this.applyPreset("clean");
+              this.showToast("Pindaian selesai dan diperindah");
+            });
+          },
+
+          // ... (Sisanya dari Filter Logic tetap sama)
+
+          prepareFilter() {
+            const src =
+              this.current && this.current.url ? this.current.url : null;
+            if (!src) return;
+
+            this.loading = true;
+            this.loadingText = "Memuat...";
+
+            if (this.history.length === 0) {
+              this.history.push(src);
+            }
+
+            const img = new Image();
+            img.src = src;
+            img.onload = () => {
+              const c = document.getElementById("filterCanvas");
+              c.width = img.width;
+              c.height = img.height;
+              const ctx = c.getContext("2d", { willReadFrequently: true });
+              ctx.drawImage(img, 0, 0);
+
+              this.applySliders(false);
+              this.loading = false;
+            };
+            img.onerror = () => {
+              this.loading = false;
+              this.showToast("Gagal memuat", "error");
+            };
+          },
+
+          applyPreset(preset) {
+            this.resetAdjustments();
+            this.activePreset = preset;
+
+            switch (preset) {
+              case "original":
+                break;
+              case "clean":
+                this.applyCleanDocument();
+                return;
+              default:
+                this.activePreset = "original";
+                break;
+            }
+
+            this.applySliders();
+            this.pushHistory(true);
+            this.showToast(
+              `${preset === "original" ? "Asli" : "Bersih"} diterapkan`
+            );
+          },
+
+          applyCleanDocument() {
+            const c = document.getElementById("filterCanvas");
+            if (!c) return;
+
+            this.loading = true;
+            this.loadingText = "Membersihkan dokumen...";
+
+            const ctx = c.getContext("2d", { willReadFrequently: true });
+            const img = new Image();
+            const baseSrc = this.history[0];
+
+            img.src = baseSrc;
+            img.onload = () => {
+              ctx.clearRect(0, 0, c.width, c.height);
+              ctx.drawImage(img, 0, 0);
+
+              const imageData = ctx.getImageData(0, 0, c.width, c.height);
+              const data = imageData.data;
+
+              // Step 1: Advanced shadow removal
+              const blockSize = 30;
+              const widthBlocks = Math.ceil(c.width / blockSize);
+              const heightBlocks = Math.ceil(c.height / blockSize);
+              const brightnessMap = [];
+
+              for (let by = 0; by < heightBlocks; by++) {
+                brightnessMap[by] = [];
+                for (let bx = 0; bx < widthBlocks; bx++) {
+                  let sum = 0,
+                    count = 0;
+
+                  for (
+                    let y = by * blockSize;
+                    y < Math.min((by + 1) * blockSize, c.height);
+                    y++
+                  ) {
+                    for (
+                      let x = bx * blockSize;
+                      x < Math.min((bx + 1) * blockSize, c.width);
+                      x++
+                    ) {
+                      const i = (y * c.width + x) * 4;
+                      const brightness =
+                        data[i] * 0.299 +
+                        data[i + 1] * 0.587 +
+                        data[i + 2] * 0.114;
+                      sum += brightness;
+                      count++;
+                    }
+                  }
+
+                  brightnessMap[by][bx] = count > 0 ? sum / count : 255;
+                }
+              }
+
+              const allBrightness = [];
+              for (let by = 0; by < heightBlocks; by++) {
+                for (let bx = 0; bx < widthBlocks; bx++) {
+                  allBrightness.push(brightnessMap[by][bx]);
+                }
+              }
+              allBrightness.sort((a, b) => b - a);
+              const targetBrightness =
+                allBrightness[Math.floor(allBrightness.length * 0.05)];
+
+              // Adaptive illumination correction
+              for (let y = 0; y < c.height; y++) {
+                for (let x = 0; x < c.width; x++) {
+                  const i = (y * c.width + x) * 4;
+                  const bx = Math.floor(x / blockSize);
+                  const by = Math.floor(y / blockSize);
+
+                  const fx = (x % blockSize) / blockSize;
+                  const fy = (y % blockSize) / blockSize;
+
+                  let localBright = brightnessMap[by][bx];
+
+                  if (bx < widthBlocks - 1 && by < heightBlocks - 1) {
+                    const b00 = brightnessMap[by][bx];
+                    const b10 = brightnessMap[by][bx + 1];
+                    const b01 = brightnessMap[by + 1][bx];
+                    const b11 = brightnessMap[by + 1][bx + 1];
+
+                    localBright =
+                      b00 * (1 - fx) * (1 - fy) +
+                      b10 * fx * (1 - fy) +
+                      b01 * (1 - fx) * fy +
+                      b11 * fx * fy;
+                  }
+
+                  const correctionFactor =
+                    localBright > 0 ? targetBrightness / localBright : 1;
+                  const limitedFactor = Math.min(
+                    Math.max(correctionFactor, 0.75),
+                    3.0
+                  );
+
+                  data[i] = Math.min(255, data[i] * limitedFactor);
+                  data[i + 1] = Math.min(255, data[i + 1] * limitedFactor);
+                  data[i + 2] = Math.min(255, data[i + 2] * limitedFactor);
+                }
+              }
+
+              // Step 2: White balance
+              let totalR = 0,
+                totalG = 0,
+                totalB = 0,
+                count = 0;
+              for (let i = 0; i < data.length; i += 4) {
+                totalR += data[i];
+                totalG += data[i + 1];
+                totalB += data[i + 2];
+                count++;
+              }
+
+              const avgR = totalR / count;
+              const avgG = totalG / count;
+              const avgB = totalB / count;
+              const avgGray = (avgR + avgG + avgB) / 3;
+
+              const scaleR = avgGray / avgR;
+              const scaleG = avgGray / avgG;
+              const scaleB = avgGray / avgB;
+
+              for (let i = 0; i < data.length; i += 4) {
+                data[i] = Math.min(255, data[i] * scaleR);
+                data[i + 1] = Math.min(255, data[i + 1] * scaleG);
+                data[i + 2] = Math.min(255, data[i + 2] * scaleB);
+              }
+
+              // Step 3: Strong contrast
+              const contrastFactor = 1.75;
+              for (let i = 0; i < data.length; i += 4) {
+                data[i] = Math.max(
+                  0,
+                  Math.min(255, (data[i] - 128) * contrastFactor + 128)
+                );
+                data[i + 1] = Math.max(
+                  0,
+                  Math.min(255, (data[i + 1] - 128) * contrastFactor + 128)
+                );
+                data[i + 2] = Math.max(
+                  0,
+                  Math.min(255, (data[i + 2] - 128) * contrastFactor + 128)
+                );
+              }
+
+              // Step 4: Brightness enhancement
+              const brightnessBoost = 40;
+              for (let i = 0; i < data.length; i += 4) {
+                data[i] = Math.min(255, data[i] + brightnessBoost);
+                data[i + 1] = Math.min(255, data[i + 1] + brightnessBoost);
+                data[i + 2] = Math.min(255, data[i + 2] + brightnessBoost);
+              }
+
+              // Step 5: Subtle sharpening
+              const sharpKernel = [0, -0.5, 0, -0.5, 3, -0.5, 0, -0.5, 0];
+              const tempData = new Uint8ClampedArray(data);
+
+              for (let y = 1; y < c.height - 1; y++) {
+                for (let x = 1; x < c.width - 1; x++) {
+                  for (let ch = 0; ch < 3; ch++) {
+                    let sum = 0;
+                    for (let ky = -1; ky <= 1; ky++) {
+                      for (let kx = -1; kx <= 1; kx++) {
+                        const idx = ((y + ky) * c.width + (x + kx)) * 4 + ch;
+                        sum +=
+                          tempData[idx] * sharpKernel[(ky + 1) * 3 + (kx + 1)];
+                      }
+                    }
+                    const i = (y * c.width + x) * 4 + ch;
+                    data[i] = Math.max(0, Math.min(255, sum));
+                  }
+                }
+              }
+
+              ctx.putImageData(imageData, 0, 0);
+              this.loading = false;
+              this.pushHistory(true);
+              this.showToast("Dokumen dibersihkan");
+            };
+          },
+
+          resetAdjustments() {
+            this.brightness = 0;
+            this.contrast = 0;
+            this.saturation = 0;
+            this.sharpness = 0;
+            this.activePreset = null;
+          },
+
+          applySliders() {
+            const c = document.getElementById("filterCanvas");
+            if (!c) return;
+
+            const ctx = c.getContext("2d", { willReadFrequently: true });
+            const img = new Image();
+            const baseSrc = this.history[0];
+
+            img.src = baseSrc;
+            img.onload = () => {
+              ctx.clearRect(0, 0, c.width, c.height);
+              ctx.drawImage(img, 0, 0);
+
+              const imageData = ctx.getImageData(0, 0, c.width, c.height);
+              const data = imageData.data;
+
+              const b = (this.brightness / 100) * 255;
+              const cst = this.contrast / 100;
+              const s = this.saturation / 100;
+              const sharp = this.sharpness / 100;
+              const factor = 1 + cst;
+
+              // Apply basic adjustments
+              for (let i = 0; i < data.length; i += 4) {
+                let r = data[i],
+                  g = data[i + 1],
+                  bl = data[i + 2];
+
+                // Brightness
+                r += b;
+                g += b;
+                bl += b;
+
+                // Contrast
+                r = (r - 128) * factor + 128;
+                g = (g - 128) * factor + 128;
+                bl = (bl - 128) * factor + 128;
+
+                // Saturation
+                const lum = 0.299 * r + 0.587 * g + 0.114 * bl;
+                r = lum + (r - lum) * (1 + s);
+                g = lum + (g - lum) * (1 + s);
+                bl = lum + (bl - lum) * (1 + s);
+
+                // Sharpness enhancement
+                if (sharp > 0) {
+                  const enhancement = sharp * 0.4;
+                  r += (r - lum) * enhancement;
+                  g += (g - lum) * enhancement;
+                  bl += (bl - lum) * enhancement;
+                }
+
+                data[i] = Math.max(0, Math.min(255, r));
+                data[i + 1] = Math.max(0, Math.min(255, g));
+                data[i + 2] = Math.max(0, Math.min(255, bl));
+              }
+
+              ctx.putImageData(imageData, 0, 0);
+            };
+          },
+
+          pushHistory(isFinalStep = true) {
+            if (!isFinalStep) return;
+
+            const c = document.getElementById("filterCanvas");
+            if (!c) return;
+
+            const data = c.toDataURL("image/png");
+
+            if (this.history.length > 1) {
+              this.history.pop();
+            }
+
+            this.history.push(data);
+            if (this.history.length > 20) this.history.shift();
+          },
+
+          undo() {
+            if (this.history.length > 1) {
+              this.loading = true;
+              this.loadingText = "Mengurungkan...";
+              this.history.pop();
+
+              const last = this.history[this.history.length - 1];
+              this.resetAdjustments();
+
+              const c = document.getElementById("filterCanvas");
+              const ctx = c.getContext("2d", { willReadFrequently: true });
+              const img = new Image();
+              img.src = last;
+              img.onload = () => {
+                c.width = img.width;
+                c.height = img.height;
+                ctx.drawImage(img, 0, 0);
+                this.loading = false;
+                this.showToast("Dibatalkan");
+              };
+            }
+          },
+
+          downloadDocument() {
+            const c = document.getElementById("filterCanvas");
+            if (!c) return;
+
+            const a = document.createElement("a");
+            a.href = c.toDataURL("image/png");
+            const baseName =
+              this.current && this.current.name
+                ? this.current.name.replace(/\.[^/.]+$/, "")
+                : "dokumen";
+            a.download = `${baseName}-scan.png`;
+            a.click();
+
+            this.showToast("Dokumen diunduh");
+          },
+
+          async done() {
+            const c = document.getElementById("filterCanvas");
+            if (!c) {
+              this.goToGallery();
+              return;
+            }
+
+            this.loading = true;
+            this.loadingText = "Menyimpan...";
+
+            const data = c.toDataURL("image/png");
+
+            if (this.images[this.currentIndex].url.startsWith("blob:")) {
+              URL.revokeObjectURL(this.images[this.currentIndex].url);
+            }
+
+            this.images[this.currentIndex].url = data;
+            this.images[this.currentIndex].canvas = data;
+
+            this.history = [];
+            this.loading = false;
+
+            await this.saveToStorage();
+            this.showToast("Dokumen disimpan");
+            this.goToGallery();
+          },
+        };
+      }
+    </script>
+  </body>
+</html>
