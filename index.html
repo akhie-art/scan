@@ -201,13 +201,21 @@
         }
       }
 
+      /* Kanvas sekarang dibatasi oleh container induknya */
       #mainCanvas,
       #filterCanvas {
         max-width: 100%;
         max-height: 100%;
+        height: auto;
+        width: auto;
         object-fit: contain;
         border-radius: 4px;
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+      }
+      
+      /* Pastikan imageWrap dapat menyesuaikan konten canvas (penting untuk crop) */
+      #imageWrap {
+          /* Ini dihandle oleh script untuk penyesuaian yang akurat */
       }
 
       .divider {
@@ -215,13 +223,12 @@
         background: #e5e5e5;
       }
 
-      /* Perbaikan Kamera: Menghapus transform: scaleX(-1); */
+      /* Perbaikan Kamera: Menghapus transform: scaleX(-1) */
       #cameraFeed {
         width: 100%;
         height: auto;
         min-height: 500px;
         object-fit: cover;
-        /* transform: scaleX(-1); <-- DIHAPUS UNTUK FIX MIRROR */
       }
     </style>
   </head>
@@ -307,7 +314,7 @@
     </div>
 
     <header class="bg-white border-b border-neutral-200 sticky top-0 z-30">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex items-center justify-between h-14">
           <div class="flex items-center space-x-3">
             <button
@@ -352,7 +359,7 @@
                   d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
                 ></path>
               </svg>
-              <span>Unggah</span>
+              <span class="hidden sm:inline">Unggah</span>
             </button>
 
             <button
@@ -378,7 +385,7 @@
                   d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
                 ></path>
               </svg>
-              <span>Kamera</span>
+              <span class="hidden sm:inline">Kamera</span>
             </button>
           </div>
           <input
@@ -393,7 +400,7 @@
       </div>
     </header>
 
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <main class="max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <section x-show="page === 'gallery'" x-transition class="fade-in">
         <div class="mb-6">
           <h2 class="text-2xl font-semibold text-neutral-900 mb-1">Dokumen</h2>
@@ -404,7 +411,7 @@
 
         <div
           x-show="images.length === 0"
-          class="card rounded-xl p-16 text-center"
+          class="card rounded-xl p-8 sm:p-16 text-center"
         >
           <div class="flex justify-center mb-5">
             <div class="bg-neutral-100 rounded-full p-6">
@@ -457,7 +464,7 @@
             <div class="card rounded-lg overflow-hidden">
               <button
                 @click="selectImage(idx); goToCrop()"
-                class="w-full h-44 bg-neutral-50 flex items-center justify-center p-3 relative group"
+                class="w-full h-32 sm:h-44 bg-neutral-50 flex items-center justify-center p-3 relative group"
               >
                 <img
                   :src="item.url"
@@ -515,7 +522,7 @@
       </section>
 
       <section x-show="page === 'camera'" x-transition class="fade-in">
-        <div class="card rounded-lg p-5">
+        <div class="card rounded-lg p-4 sm:p-6">
           <div
             class="flex items-center justify-between mb-5 pb-4 border-b border-neutral-200"
           >
@@ -536,8 +543,8 @@
           </div>
 
           <div
-            class="relative bg-neutral-900 rounded-lg flex items-center justify-center overflow-hidden"
-            style="min-height: 500px"
+            class="relative bg-neutral-900 rounded-lg flex items-center justify-center overflow-hidden w-full"
+            style="min-height: 500px; max-height: 80vh;"
           >
             <video
               id="cameraFeed"
@@ -603,9 +610,9 @@
       </section>
 
       <section x-show="page === 'crop'" x-transition class="fade-in">
-        <div class="card rounded-lg p-5">
+        <div class="card rounded-lg p-4 sm:p-6">
           <div
-            class="flex items-center justify-between mb-5 pb-4 border-b border-neutral-200"
+            class="flex items-center justify-between mb-5 pb-4 border-b border-neutral-200 flex-wrap"
           >
             <div>
               <h3 class="text-lg font-semibold text-neutral-900 mb-0.5">
@@ -614,7 +621,7 @@
               <p class="text-xs text-neutral-500" x-text="current.name"></p>
             </div>
 
-            <div class="flex items-center space-x-2">
+            <div class="flex items-center space-x-2 mt-3 sm:mt-0">
               <button
                 @click="autoDetect()"
                 :disabled="!cvReady"
@@ -633,7 +640,7 @@
                     d="M13 10V3L4 14h7v7l9-11h-7z"
                   ></path>
                 </svg>
-                <span>Otomatis</span>
+                <span class="hidden sm:inline">Otomatis</span>
               </button>
 
               <button
@@ -654,7 +661,7 @@
                     d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"
                   ></path>
                 </svg>
-                <span>Pindai Cepat</span>
+                <span class="hidden sm:inline">Pindai Cepat</span>
               </button>
 
               <button
@@ -680,12 +687,12 @@
           </div>
 
           <div
-            class="relative bg-neutral-50 rounded-lg p-4 flex items-center justify-center"
-            style="min-height: 500px"
+            class="relative bg-neutral-50 rounded-lg p-2 sm:p-4 flex items-center justify-center w-full"
+            style="min-height: 500px; max-height: 80vh;"
           >
             <div
               x-show="current.url"
-              class="relative"
+              class="relative max-w-full max-h-full"
               id="imageWrap"
               style="display: inline-block"
             >
@@ -761,9 +768,9 @@
       </section>
 
       <section x-show="page === 'filter'" x-transition class="fade-in">
-        <div class="card rounded-lg p-5">
+        <div class="card rounded-lg p-4 sm:p-6">
           <div
-            class="flex items-center justify-between mb-5 pb-4 border-b border-neutral-200"
+            class="flex items-center justify-between mb-5 pb-4 border-b border-neutral-200 flex-wrap"
           >
             <div>
               <h3 class="text-lg font-semibold text-neutral-900 mb-0.5">
@@ -774,7 +781,7 @@
               </p>
             </div>
 
-            <div class="flex items-center space-x-2">
+            <div class="flex items-center space-x-2 mt-3 sm:mt-0">
               <button
                 @click="undo()"
                 :disabled="history.length <= 1"
@@ -800,7 +807,7 @@
                     d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
                   ></path>
                 </svg>
-                <span>Unduh</span>
+                <span class="hidden sm:inline">Unduh</span>
               </button>
 
               <button
@@ -826,16 +833,16 @@
           </div>
 
           <div class="grid lg:grid-cols-3 gap-6">
-            <div class="lg:col-span-2">
+            <div class="lg:col-span-2 order-1 lg:order-1">
               <div
-                class="bg-neutral-50 rounded-lg p-4 flex items-center justify-center"
-                style="min-height: 500px"
+                class="bg-neutral-50 rounded-lg p-4 flex items-center justify-center w-full"
+                style="min-height: 400px; max-height: 80vh;"
               >
                 <canvas id="filterCanvas"></canvas>
               </div>
             </div>
 
-            <div class="space-y-5">
+            <div class="space-y-5 lg:col-span-1 order-2 lg:order-2">
               <div>
                 <h4 class="text-sm font-semibold text-neutral-900 mb-3">
                   Preset Filter
@@ -1242,16 +1249,25 @@
               const c = document.getElementById("mainCanvas");
               const wrap = document.getElementById("imageWrap");
 
+              // Set canvas dimensions to actual image size
               c.width = img.width;
               c.height = img.height;
               const ctx = c.getContext("2d", { willReadFrequently: true });
               ctx.drawImage(img, 0, 0);
+              
+              // Set wrapper size based on canvas's *displayed* size (after CSS max-width/height is applied)
+              // This needs a brief moment for the DOM to render the canvas size, so using $nextTick isn't always reliable here.
+              // We rely on the CSS/flexbox to fit it, and then grab the client size.
 
-              wrap.style.width = c.clientWidth + "px";
-              wrap.style.height = c.clientHeight + "px";
-
-              this.autoDetect(); // Panggil Auto Detect
-              this.loading = false;
+              // For modern layout, we rely on CSS to size the canvas visually, 
+              // but we MUST ensure the wrapper matches the canvas's displayed size for corner dragging to work correctly.
+              // Wait for a short time to allow canvas to resize visually (this is a heuristic fix).
+              setTimeout(() => {
+                wrap.style.width = c.clientWidth + "px";
+                wrap.style.height = c.clientHeight + "px";
+                this.autoDetect(); // Panggil Auto Detect
+                this.loading = false;
+              }, 100); 
             };
             img.onerror = () => {
               this.loading = false;
@@ -1259,7 +1275,7 @@
             };
           },
 
-          // PERBAIKAN UX: Reset batas pangkas
+          // PERBAIKAN UX: Reset batas pangkas ke margin 4%
           resetCrop() {
             const c = document.getElementById("mainCanvas");
             if (!c) return;
@@ -1295,6 +1311,7 @@
               const toPercent = (x, y) =>
                 `${(x / displayW) * 100},${(y / displayH) * 100}`;
 
+              // Urutan: TL, TR, BR, BL untuk polygon
               const points = [p1, p2, p3, p4]
                 .map((p) => toPercent(p.x, p.y))
                 .join(" ");
@@ -1386,8 +1403,8 @@
 
                 if (bestContour) {
                   const scaleX = c.clientWidth / c.width;
-                  const scaleY = c.height / c.clientHeight;
-
+                  const scaleY = c.clientHeight / c.height; // Gunakan clientHeight
+                  
                   // Urutkan 4 sudut
                   const rawCorners = [];
                   for (let i = 0; i < 4; i++) {
@@ -1464,6 +1481,7 @@
             top.sort((a, b) => a.x - b.x);
 
             // Urutkan baris bawah (bottom) berdasarkan koordinat x: bottom[0]=BL, bottom[1]=BR
+            // Perhatian: Urutan ini TL, TR, BR, BL. bottom[1] adalah BR, bottom[0] adalah BL
             bottom.sort((a, b) => a.x - b.x);
 
             // Urutan akhir: TL, TR, BR, BL
@@ -1555,21 +1573,21 @@
             const w1 = Math.hypot(
               corners[0].x - corners[1].x,
               corners[0].y - corners[1].y
-            ); // Jarak Top
+            ); // Jarak Top (TL ke TR)
             const w2 = Math.hypot(
               corners[3].x - corners[2].x,
               corners[3].y - corners[2].y
-            ); // Jarak Bottom
+            ); // Jarak Bottom (BL ke BR)
             const outputWidth = Math.max(w1, w2);
 
             const h1 = Math.hypot(
               corners[0].x - corners[3].x,
               corners[0].y - corners[3].y
-            ); // Jarak Left
+            ); // Jarak Left (TL ke BL)
             const h2 = Math.hypot(
               corners[1].x - corners[2].x,
               corners[1].y - corners[2].y
-            ); // Jarak Right
+            ); // Jarak Right (TR ke BR)
             const outputHeight = Math.max(h1, h2);
 
             const destCanvas = document.createElement("canvas");
@@ -1580,7 +1598,7 @@
               console.log("Menggunakan OpenCV untuk Perspective Transform.");
 
               // Periksa apakah dimensi output valid
-              if (outputWidth <= 0 || outputHeight <= 0) {
+              if (outputWidth <= 10 || outputHeight <= 10) {
                 console.error(
                   "Dimensi output tidak valid. Kembali ke fallback."
                 );
@@ -1638,7 +1656,7 @@
               }
             }
 
-            // FALLBACK: Cropping Bounding Box
+            // FALLBACK: Cropping Bounding Box (JIKA OPENCV GAGAL)
             console.warn(
               "OpenCV tidak tersedia atau gagal. Menggunakan Cropping Bounding Box Sederhana."
             );
@@ -1679,6 +1697,9 @@
             }
             this.loadingText = "Memindai...";
             this.autoDetect();
+            // Memberi waktu agar autoDetect selesai memperbarui UI sebelum crop dimulai
+            await new Promise(r => setTimeout(r, 100)); 
+            
             await this.processCropAndPerspective(true);
             this.goToFilter();
 
@@ -1688,7 +1709,7 @@
             });
           },
 
-          // ... (Sisanya dari Filter Logic tetap sama)
+          // === FILTER LOGIC ===
 
           prepareFilter() {
             const src =
@@ -1761,7 +1782,7 @@
               const imageData = ctx.getImageData(0, 0, c.width, c.height);
               const data = imageData.data;
 
-              // Step 1: Advanced shadow removal
+              // Step 1: Advanced shadow removal (Adaptive Illumination)
               const blockSize = 30;
               const widthBlocks = Math.ceil(c.width / blockSize);
               const heightBlocks = Math.ceil(c.height / blockSize);
@@ -1807,7 +1828,7 @@
               const targetBrightness =
                 allBrightness[Math.floor(allBrightness.length * 0.05)];
 
-              // Adaptive illumination correction
+              // Adaptive illumination correction with bilinear interpolation
               for (let y = 0; y < c.height; y++) {
                 for (let x = 0; x < c.width; x++) {
                   const i = (y * c.width + x) * 4;
@@ -1817,8 +1838,9 @@
                   const fx = (x % blockSize) / blockSize;
                   const fy = (y % blockSize) / blockSize;
 
-                  let localBright = brightnessMap[by][bx];
+                  let localBright;
 
+                  // Bilinear Interpolation
                   if (bx < widthBlocks - 1 && by < heightBlocks - 1) {
                     const b00 = brightnessMap[by][bx];
                     const b10 = brightnessMap[by][bx + 1];
@@ -1830,6 +1852,8 @@
                       b10 * fx * (1 - fy) +
                       b01 * (1 - fx) * fy +
                       b11 * fx * fy;
+                  } else {
+                    localBright = brightnessMap[by][bx];
                   }
 
                   const correctionFactor =
@@ -1845,7 +1869,7 @@
                 }
               }
 
-              // Step 2: White balance
+              // Step 2: White balance (simpler gray world)
               let totalR = 0,
                 totalG = 0,
                 totalB = 0,
@@ -1872,32 +1896,27 @@
                 data[i + 2] = Math.min(255, data[i + 2] * scaleB);
               }
 
-              // Step 3: Strong contrast
-              const contrastFactor = 1.75;
-              for (let i = 0; i < data.length; i += 4) {
-                data[i] = Math.max(
-                  0,
-                  Math.min(255, (data[i] - 128) * contrastFactor + 128)
-                );
-                data[i + 1] = Math.max(
-                  0,
-                  Math.min(255, (data[i + 1] - 128) * contrastFactor + 128)
-                );
-                data[i + 2] = Math.max(
-                  0,
-                  Math.min(255, (data[i + 2] - 128) * contrastFactor + 128)
-                );
-              }
-
-              // Step 4: Brightness enhancement
+              // Step 3: Strong contrast and brightness boost
+              const contrastFactor = 1.8;
               const brightnessBoost = 40;
               for (let i = 0; i < data.length; i += 4) {
-                data[i] = Math.min(255, data[i] + brightnessBoost);
-                data[i + 1] = Math.min(255, data[i + 1] + brightnessBoost);
-                data[i + 2] = Math.min(255, data[i + 2] + brightnessBoost);
+                // Apply contrast
+                data[i] = (data[i] - 128) * contrastFactor + 128;
+                data[i + 1] = (data[i + 1] - 128) * contrastFactor + 128;
+                data[i + 2] = (data[i + 2] - 128) * contrastFactor + 128;
+                
+                // Apply brightness
+                data[i] += brightnessBoost;
+                data[i + 1] += brightnessBoost;
+                data[i + 2] += brightnessBoost;
+
+                // Clamp values
+                data[i] = Math.max(0, Math.min(255, data[i]));
+                data[i + 1] = Math.max(0, Math.min(255, data[i + 1]));
+                data[i + 2] = Math.max(0, Math.min(255, data[i + 2]));
               }
 
-              // Step 5: Subtle sharpening
+              // Step 4: Subtle sharpening (menggunakan Konvolusi)
               const sharpKernel = [0, -0.5, 0, -0.5, 3, -0.5, 0, -0.5, 0];
               const tempData = new Uint8ClampedArray(data);
 
