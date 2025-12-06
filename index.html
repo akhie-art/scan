@@ -215,13 +215,13 @@
         background: #e5e5e5;
       }
 
-      /* Tambahan untuk kamera */
+      /* Perbaikan Kamera: Menghapus transform: scaleX(-1); */
       #cameraFeed {
         width: 100%;
         height: auto;
         min-height: 500px;
         object-fit: cover;
-        transform: scaleX(-1); /* Membalikkan tampilan (mirip selfie) */
+        /* transform: scaleX(-1); <-- DIHAPUS UNTUK FIX MIRROR */
       }
     </style>
   </head>
@@ -1259,6 +1259,16 @@
             };
           },
 
+          // PERBAIKAN UX: Reset batas pangkas
+          resetCrop() {
+            const c = document.getElementById("mainCanvas");
+            if (!c) return;
+
+            this.simpleAutoDetect(c); // Menggunakan deteksi margin sederhana untuk reset yang konsisten
+            this.updateMaskFromCorners();
+            this.showToast("Batas pangkas diatur ulang.");
+          },
+
           updateMaskFromCorners() {
             const c = document.getElementById("mainCanvas");
             if (!c) return;
@@ -1464,8 +1474,9 @@
            * Fallback deteksi margin tetap (sangat dasar).
            */
           simpleAutoDetect(c) {
-            const wDisplay = c.clientWidth;
-            const hDisplay = c.clientHeight;
+            const wrap = document.getElementById("imageWrap");
+            const wDisplay = wrap.clientWidth;
+            const hDisplay = wrap.clientHeight;
 
             const marginW = wDisplay * 0.04;
             const marginH = hDisplay * 0.04;
