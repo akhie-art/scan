@@ -54,6 +54,7 @@
         transition: all 0.15s ease;
         font-weight: 500;
         letter-spacing: -0.01em;
+        white-space: nowrap;
       }
 
       .btn-primary {
@@ -211,29 +212,40 @@
         object-fit: contain;
         border-radius: 4px;
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-      }
-      
-      /* Pastikan imageWrap dapat menyesuaikan konten canvas (penting untuk crop) */
-      #imageWrap {
-          /* Ini dihandle oleh script untuk penyesuaian yang akurat */
+        transform-origin: 0 0; /* Penting untuk zoom */
       }
 
-      .divider {
-        height: 1px;
-        background: #e5e5e5;
-      }
-
-      /* Perbaikan Kamera: Menghapus transform: scaleX(-1) */
+      /* Camera Fix */
       #cameraFeed {
         width: 100%;
         height: auto;
         min-height: 500px;
         object-fit: cover;
       }
+
+      /* Mengaktifkan Scroll untuk area Crop dan Filter */
+      #cropContainer,
+      #filterContainer {
+        overflow: auto;
+        -webkit-overflow-scrolling: touch;
+        user-select: none; /* Mencegah seleksi teks saat dragging */
+        cursor: grab;
+      }
+
+      /* Kursor saat dragging */
+      #cropContainer.dragging,
+      #filterContainer.dragging {
+        cursor: grabbing;
+      }
     </style>
   </head>
 
-  <body x-data="scannerApp()" x-init="init()">
+  <body
+    x-data="scannerApp()"
+    x-init="init()"
+    @mouseup.window="stopDrag()"
+    @mousemove.window="doDrag($event)"
+  >
     <div
       x-show="loading"
       x-cloak
@@ -315,8 +327,8 @@
 
     <header class="bg-white border-b border-neutral-200 sticky top-0 z-30">
       <div class="max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex items-center justify-between h-14">
-          <div class="flex items-center space-x-3">
+        <div class="flex items-center justify-between h-14 w-full">
+          <div class="flex items-center space-x-3 flex-shrink-0">
             <button
               @click="goToGallery()"
               class="text-neutral-600 hover:text-neutral-900 transition p-1.5 rounded-md hover:bg-neutral-50"
@@ -341,7 +353,7 @@
             </div>
           </div>
 
-          <div class="flex items-center space-x-3">
+          <div class="flex items-center space-x-3 flex-shrink-0">
             <button
               @click="openFileInput"
               class="btn btn-secondary px-3 py-2 rounded-lg text-sm flex items-center space-x-2"
@@ -544,7 +556,7 @@
 
           <div
             class="relative bg-neutral-900 rounded-lg flex items-center justify-center overflow-hidden w-full"
-            style="min-height: 500px; max-height: 80vh;"
+            style="min-height: 500px; max-height: 80vh"
           >
             <video
               id="cameraFeed"
@@ -612,16 +624,16 @@
       <section x-show="page === 'crop'" x-transition class="fade-in">
         <div class="card rounded-lg p-4 sm:p-6">
           <div
-            class="flex items-center justify-between mb-5 pb-4 border-b border-neutral-200 flex-wrap"
+            class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-5 pb-4 border-b border-neutral-200"
           >
-            <div>
+            <div class="mb-3 sm:mb-0">
               <h3 class="text-lg font-semibold text-neutral-900 mb-0.5">
                 Sesuaikan Batas
               </h3>
               <p class="text-xs text-neutral-500" x-text="current.name"></p>
             </div>
 
-            <div class="flex items-center space-x-2 mt-3 sm:mt-0">
+            <div class="flex items-center space-x-2 overflow-x-auto pb-1">
               <button
                 @click="autoDetect()"
                 :disabled="!cvReady"
@@ -687,14 +699,19 @@
           </div>
 
           <div
-            class="relative bg-neutral-50 rounded-lg p-2 sm:p-4 flex items-center justify-center w-full"
-            style="min-height: 500px; max-height: 80vh;"
+            id="cropContainer"
+            class="relative bg-neutral-50 rounded-lg p-2 sm:p-4 flex items-start justify-center w-full"
+            style="min-height: 500px; max-height: 80vh"
+            @wheel.prevent="handleZoom($event, 'mainCanvas')"
+            @mousedown="startDrag($event, 'cropContainer')"
+            :class="{'dragging': isDragging.cropContainer}"
           >
             <div
               x-show="current.url"
-              class="relative max-w-full max-h-full"
+              class="relative"
               id="imageWrap"
-              style="display: inline-block"
+              style="display: inline-block; cursor: grab"
+              :style="`transform: scale(${zoomLevel.mainCanvas}); transform-origin: 0 0;`"
             >
               <canvas id="mainCanvas"></canvas>
 
@@ -770,9 +787,9 @@
       <section x-show="page === 'filter'" x-transition class="fade-in">
         <div class="card rounded-lg p-4 sm:p-6">
           <div
-            class="flex items-center justify-between mb-5 pb-4 border-b border-neutral-200 flex-wrap"
+            class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-5 pb-4 border-b border-neutral-200"
           >
-            <div>
+            <div class="mb-3 sm:mb-0">
               <h3 class="text-lg font-semibold text-neutral-900 mb-0.5">
                 Perindah Dokumen
               </h3>
@@ -781,7 +798,7 @@
               </p>
             </div>
 
-            <div class="flex items-center space-x-2 mt-3 sm:mt-0">
+            <div class="flex items-center space-x-2 overflow-x-auto pb-1">
               <button
                 @click="undo()"
                 :disabled="history.length <= 1"
@@ -833,16 +850,23 @@
           </div>
 
           <div class="grid lg:grid-cols-3 gap-6">
-            <div class="lg:col-span-2 order-1 lg:order-1">
+            <div class="lg:col-span-2 order-1">
               <div
-                class="bg-neutral-50 rounded-lg p-4 flex items-center justify-center w-full"
-                style="min-height: 400px; max-height: 80vh;"
+                id="filterContainer"
+                class="bg-neutral-50 rounded-lg p-4 flex items-start justify-center w-full"
+                style="min-height: 400px; max-height: 80vh"
+                @wheel.prevent="handleZoom($event, 'filterCanvas')"
+                @mousedown="startDrag($event, 'filterContainer')"
+                :class="{'dragging': isDragging.filterContainer}"
               >
-                <canvas id="filterCanvas"></canvas>
+                <canvas
+                  id="filterCanvas"
+                  :style="`transform: scale(${zoomLevel.filterCanvas});`"
+                ></canvas>
               </div>
             </div>
 
-            <div class="space-y-5 lg:col-span-1 order-2 lg:order-2">
+            <div class="space-y-5 lg:col-span-1 order-2">
               <div>
                 <h4 class="text-sm font-semibold text-neutral-900 mb-3">
                   Preset Filter
@@ -995,6 +1019,26 @@
           showDeleteModal: false,
           deleteIndex: null,
 
+          // Variabel Zoom dan Drag
+          zoomLevel: {
+            mainCanvas: 1.0,
+            filterCanvas: 1.0,
+          },
+          zoomStep: 0.1,
+          minZoom: 1.0,
+          maxZoom: 4.0,
+
+          // **BARU:** Variabel Drag/Pan
+          isDragging: {
+            cropContainer: false,
+            filterContainer: false,
+          },
+          startX: 0,
+          startY: 0,
+          scrollLeft: 0,
+          scrollTop: 0,
+          currentContainerId: null,
+
           // Variabel baru untuk fitur Kamera
           cameraStream: null,
           cameraIndex: 0,
@@ -1002,6 +1046,103 @@
           init() {
             this.initDraggableCorners();
             this.loadFromStorage();
+          },
+
+          // **BARU:** Fungsi Drag/Pan
+          startDrag(event, containerId) {
+            // Hanya izinkan drag jika zoom > 1.0 atau jika itu adalah crop container (karena corners juga drag)
+            if (event.target.closest(".corner")) return;
+
+            const container = document.getElementById(containerId);
+
+            this.isDragging[containerId] = true;
+            this.currentContainerId = containerId;
+            this.startX = event.pageX - container.offsetLeft;
+            this.startY = event.pageY - container.offsetTop;
+            this.scrollLeft = container.scrollLeft;
+            this.scrollTop = container.scrollTop;
+
+            // Nonaktifkan default browser drag
+            event.preventDefault();
+          },
+
+          doDrag(event) {
+            if (
+              !this.currentContainerId ||
+              !this.isDragging[this.currentContainerId]
+            )
+              return;
+
+            const container = document.getElementById(this.currentContainerId);
+
+            // Hitung seberapa jauh mouse bergerak sejak mousedown
+            const x = event.pageX - container.offsetLeft;
+            const y = event.pageY - container.offsetTop;
+
+            const walkX = (x - this.startX) * 1.5; // Mengalikan 1.5 untuk sensitivitas
+            const walkY = (y - this.startY) * 1.5;
+
+            // Terapkan pergeseran (pan)
+            container.scrollLeft = this.scrollLeft - walkX;
+            container.scrollTop = this.scrollTop - walkY;
+          },
+
+          stopDrag() {
+            this.isDragging.cropContainer = false;
+            this.isDragging.filterContainer = false;
+            this.currentContainerId = null;
+          },
+
+          // Fungsi penanganan Zoom
+          handleZoom(event, canvasId) {
+            let delta = event.deltaY > 0 ? -1 : 1; // Mendeteksi arah scroll
+            let currentZoom = this.zoomLevel[canvasId];
+            let newZoom = currentZoom + delta * this.zoomStep;
+
+            // Batasi nilai zoom
+            newZoom = Math.max(this.minZoom, Math.min(this.maxZoom, newZoom));
+
+            if (newZoom === currentZoom) return; // Tidak perlu update jika tidak ada perubahan
+
+            this.zoomLevel[canvasId] = newZoom;
+
+            const containerId =
+              canvasId === "mainCanvas" ? "cropContainer" : "filterContainer";
+            const container = document.getElementById(containerId);
+            const canvas = document.getElementById(canvasId);
+
+            // Dapatkan posisi kursor relatif terhadap kontainer scroll
+            const rect = container.getBoundingClientRect();
+            const mouseX = event.clientX - rect.left;
+            const mouseY = event.clientY - rect.top;
+
+            // Hitung rasio scroll position baru (untuk menjaga fokus zoom)
+            const scrollRatioX =
+              (container.scrollLeft + mouseX) /
+              (canvas.clientWidth * currentZoom);
+            const scrollRatioY =
+              (container.scrollTop + mouseY) /
+              (canvas.clientHeight * currentZoom);
+
+            // Terapkan skala CSS
+            if (canvasId === "mainCanvas") {
+              const wrap = document.getElementById("imageWrap");
+              if (wrap) {
+                wrap.style.width = canvas.clientWidth * newZoom + "px";
+                wrap.style.height = canvas.clientHeight * newZoom + "px";
+              }
+            } else {
+              canvas.style.width = canvas.width * newZoom + "px";
+              canvas.style.height = canvas.height * newZoom + "px";
+            }
+
+            // Hitung posisi scroll baru
+            container.scrollLeft =
+              canvas.clientWidth * newZoom * scrollRatioX - mouseX;
+            container.scrollTop =
+              canvas.clientHeight * newZoom * scrollRatioY - mouseY;
+
+            this.updateMaskFromCorners(); // Update posisi mask/corners jika di halaman crop
           },
 
           // === CAMERA LOGIC ===
@@ -1136,12 +1277,14 @@
           goToCrop() {
             this.stopCamera();
             this.page = "crop";
+            this.zoomLevel.mainCanvas = 1.0; // Reset zoom
             this.$nextTick(() => this.prepareCrop());
           },
 
           goToFilter() {
             this.stopCamera();
             this.page = "filter";
+            this.zoomLevel.filterCanvas = 1.0; // Reset zoom
             this.$nextTick(() => this.prepareFilter());
           },
 
@@ -1222,6 +1365,11 @@
                     const maxLeft = wrap ? wrap.clientWidth : 0;
                     const maxTop = wrap ? wrap.clientHeight : 0;
 
+                    // Gunakan skala saat ini untuk membatasi gerakan
+                    const currentScale = self.zoomLevel.mainCanvas;
+                    const scaledMaxLeft = maxLeft / currentScale;
+                    const scaledMaxTop = maxTop / currentScale;
+
                     const finalLeft = Math.max(0, Math.min(maxLeft, newLeft));
                     const finalTop = Math.max(0, Math.min(maxTop, newTop));
 
@@ -1242,6 +1390,7 @@
 
             this.loading = true;
             this.loadingText = "Memuat...";
+            this.zoomLevel.mainCanvas = 1.0; // Reset zoom saat memuat
 
             const img = new Image();
             img.src = this.current.url;
@@ -1254,20 +1403,14 @@
               c.height = img.height;
               const ctx = c.getContext("2d", { willReadFrequently: true });
               ctx.drawImage(img, 0, 0);
-              
-              // Set wrapper size based on canvas's *displayed* size (after CSS max-width/height is applied)
-              // This needs a brief moment for the DOM to render the canvas size, so using $nextTick isn't always reliable here.
-              // We rely on the CSS/flexbox to fit it, and then grab the client size.
 
-              // For modern layout, we rely on CSS to size the canvas visually, 
-              // but we MUST ensure the wrapper matches the canvas's displayed size for corner dragging to work correctly.
-              // Wait for a short time to allow canvas to resize visually (this is a heuristic fix).
+              // Set wrapper size based on canvas's *displayed* size
               setTimeout(() => {
                 wrap.style.width = c.clientWidth + "px";
                 wrap.style.height = c.clientHeight + "px";
                 this.autoDetect(); // Panggil Auto Detect
                 this.loading = false;
-              }, 100); 
+              }, 100);
             };
             img.onerror = () => {
               this.loading = false;
@@ -1279,6 +1422,11 @@
           resetCrop() {
             const c = document.getElementById("mainCanvas");
             if (!c) return;
+
+            this.zoomLevel.mainCanvas = 1.0; // Reset zoom
+            const container = document.getElementById("cropContainer");
+            container.scrollLeft = 0;
+            container.scrollTop = 0;
 
             this.simpleAutoDetect(c); // Menggunakan deteksi margin sederhana untuk reset yang konsisten
             this.updateMaskFromCorners();
@@ -1308,13 +1456,24 @@
 
             const maskPolygon = document.getElementById("maskPolygon");
             if (maskPolygon) {
-              const toPercent = (x, y) =>
-                `${(x / displayW) * 100},${(y / displayH) * 100}`;
+              // Hitung persentase berdasarkan ukuran wrapper yang diskalakan
+              const scale = this.zoomLevel.mainCanvas;
+              const actualW = displayW / scale;
+              const actualH = displayH / scale;
 
-              // Urutan: TL, TR, BR, BL untuk polygon
-              const points = [p1, p2, p3, p4]
+              const toPercent = (x, y) =>
+                `${(x / actualW) * 100},${(y / actualH) * 100}`;
+
+              // Nilai x dan y sudut sudah dikalikan dengan scale display, jadi kita bagi agar kembali ke nilai 1.0
+              const points = [
+                { x: p1.x / scale, y: p1.y / scale },
+                { x: p2.x / scale, y: p2.y / scale },
+                { x: p3.x / scale, y: p3.y / scale },
+                { x: p4.x / scale, y: p4.y / scale },
+              ]
                 .map((p) => toPercent(p.x, p.y))
                 .join(" ");
+
               maskPolygon.setAttribute("points", points);
             }
           },
@@ -1404,7 +1563,7 @@
                 if (bestContour) {
                   const scaleX = c.clientWidth / c.width;
                   const scaleY = c.clientHeight / c.height; // Gunakan clientHeight
-                  
+
                   // Urutkan 4 sudut
                   const rawCorners = [];
                   for (let i = 0; i < 4; i++) {
@@ -1481,7 +1640,6 @@
             top.sort((a, b) => a.x - b.x);
 
             // Urutkan baris bawah (bottom) berdasarkan koordinat x: bottom[0]=BL, bottom[1]=BR
-            // Perhatian: Urutan ini TL, TR, BR, BL. bottom[1] adalah BR, bottom[0] adalah BL
             bottom.sort((a, b) => a.x - b.x);
 
             // Urutan akhir: TL, TR, BR, BL
@@ -1533,9 +1691,14 @@
                 const scaleX = c.width / c.clientWidth;
                 const scaleY = c.height / c.clientHeight;
 
+                // Menggunakan coordinate *tanpa* zoom untuk perhitungan prespektif
                 return {
-                  x: (parseFloat(el.getAttribute("data-left")) || 0) * scaleX,
-                  y: (parseFloat(el.getAttribute("data-top")) || 0) * scaleY,
+                  x:
+                    ((parseFloat(el.getAttribute("data-left")) || 0) * scaleX) /
+                    this.zoomLevel.mainCanvas,
+                  y:
+                    ((parseFloat(el.getAttribute("data-top")) || 0) * scaleY) /
+                    this.zoomLevel.mainCanvas,
                 };
               };
 
@@ -1698,8 +1861,8 @@
             this.loadingText = "Memindai...";
             this.autoDetect();
             // Memberi waktu agar autoDetect selesai memperbarui UI sebelum crop dimulai
-            await new Promise(r => setTimeout(r, 100)); 
-            
+            await new Promise((r) => setTimeout(r, 100));
+
             await this.processCropAndPerspective(true);
             this.goToFilter();
 
@@ -1718,6 +1881,7 @@
 
             this.loading = true;
             this.loadingText = "Memuat...";
+            this.zoomLevel.filterCanvas = 1.0; // Reset zoom saat memuat
 
             if (this.history.length === 0) {
               this.history.push(src);
@@ -1824,9 +1988,10 @@
                   allBrightness.push(brightnessMap[by][bx]);
                 }
               }
+              // Gunakan 10% kecerahan tertinggi
               allBrightness.sort((a, b) => b - a);
               const targetBrightness =
-                allBrightness[Math.floor(allBrightness.length * 0.05)];
+                allBrightness[Math.floor(allBrightness.length * 0.1)];
 
               // Adaptive illumination correction with bilinear interpolation
               for (let y = 0; y < c.height; y++) {
@@ -1858,14 +2023,15 @@
 
                   const correctionFactor =
                     localBright > 0 ? targetBrightness / localBright : 1;
+                  // Batas faktor koreksi
                   const limitedFactor = Math.min(
-                    Math.max(correctionFactor, 0.75),
-                    3.0
+                    Math.max(correctionFactor, 0.8),
+                    2.0
                   );
 
-                  data[i] = Math.min(255, data[i] * limitedFactor);
-                  data[i + 1] = Math.min(255, data[i + 1] * limitedFactor);
-                  data[i + 2] = Math.min(255, data[i + 2] * limitedFactor);
+                  data[i] = data[i] * limitedFactor;
+                  data[i + 1] = data[i + 1] * limitedFactor;
+                  data[i + 2] = data[i + 2] * limitedFactor;
                 }
               }
 
@@ -1891,20 +2057,20 @@
               const scaleB = avgGray / avgB;
 
               for (let i = 0; i < data.length; i += 4) {
-                data[i] = Math.min(255, data[i] * scaleR);
-                data[i + 1] = Math.min(255, data[i + 1] * scaleG);
-                data[i + 2] = Math.min(255, data[i + 2] * scaleB);
+                data[i] = data[i] * scaleR;
+                data[i + 1] = data[i + 1] * scaleG;
+                data[i + 2] = data[i + 2] * scaleB;
               }
 
-              // Step 3: Strong contrast and brightness boost
-              const contrastFactor = 1.8;
-              const brightnessBoost = 40;
+              // Step 3: Strong contrast and brightness boost (Adjusted for better whites)
+              const contrastFactor = 2.0; // Lebih agresif
+              const brightnessBoost = 60; // Lebih cerah
               for (let i = 0; i < data.length; i += 4) {
                 // Apply contrast
                 data[i] = (data[i] - 128) * contrastFactor + 128;
                 data[i + 1] = (data[i + 1] - 128) * contrastFactor + 128;
                 data[i + 2] = (data[i + 2] - 128) * contrastFactor + 128;
-                
+
                 // Apply brightness
                 data[i] += brightnessBoost;
                 data[i + 1] += brightnessBoost;
@@ -1916,8 +2082,8 @@
                 data[i + 2] = Math.max(0, Math.min(255, data[i + 2]));
               }
 
-              // Step 4: Subtle sharpening (menggunakan Konvolusi)
-              const sharpKernel = [0, -0.5, 0, -0.5, 3, -0.5, 0, -0.5, 0];
+              // Step 4: Subtle sharpening (Lebih kuat)
+              const sharpKernel = [0, -1, 0, -1, 5, -1, 0, -1, 0]; // Sharpening kernel yang lebih umum dan kuat
               const tempData = new Uint8ClampedArray(data);
 
               for (let y = 1; y < c.height - 1; y++) {
