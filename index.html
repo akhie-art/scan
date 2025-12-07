@@ -13,15 +13,17 @@
 
     <script
       async
-      src="node_modules/@techstark/opencv-js/dist/opencv.js"
+      src="https://docs.opencv.org/4.5.2/opencv.js"
       onload="onOpenCvReady()"
+      type="text/javascript"
     ></script>
     <script>
-      // Variabel global untuk status OpenCV
       var cvReady = false;
       function onOpenCvReady() {
-        cvReady = true;
-        console.log("OpenCV.js siap digunakan.");
+        cv["onRuntimeInitialized"] = () => {
+          cvReady = true;
+          console.log("OpenCV.js siap digunakan.");
+        };
       }
     </script>
 
@@ -76,9 +78,6 @@
         background: #e5e5e5;
       }
 
-      /* ================================================= */
-      /* CSS Sudut dan Batas */
-      /* ================================================= */
       .corner {
         width: 20px;
         height: 20px;
@@ -108,6 +107,14 @@
           0 5px 18px rgba(0, 0, 0, 0.4);
       }
 
+      @media (max-width: 768px) {
+        .corner {
+          width: 28px;
+          height: 28px;
+          touch-action: none;
+        }
+      }
+
       .overlay-mask {
         position: absolute;
         inset: 0;
@@ -115,17 +122,15 @@
         z-index: 10;
       }
 
-      /* Garis batas poligon yang jelas */
       #maskPolygon {
         fill: black;
-        stroke: #f5f5f5; /* Garis luar putih/abu-abu terang */
-        stroke-width: 4; /* Ketebalan garis */
+        stroke: #f5f5f5;
+        stroke-width: 4;
       }
 
       .overlay-mask rect {
         fill: rgba(0, 0, 0, 0.6);
       }
-      /* ================================================= */
 
       input[type="range"] {
         -webkit-appearance: none;
@@ -202,7 +207,6 @@
         }
       }
 
-      /* Kanvas sekarang dibatasi oleh container induknya */
       #mainCanvas,
       #filterCanvas {
         max-width: 100%;
@@ -212,10 +216,9 @@
         object-fit: contain;
         border-radius: 4px;
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-        transform-origin: 0 0; /* Penting untuk zoom */
+        transform-origin: 0 0;
       }
 
-      /* Camera Fix */
       #cameraFeed {
         width: 100%;
         height: auto;
@@ -223,19 +226,48 @@
         object-fit: cover;
       }
 
-      /* Mengaktifkan Scroll untuk area Crop dan Filter */
       #cropContainer,
       #filterContainer {
         overflow: auto;
         -webkit-overflow-scrolling: touch;
-        user-select: none; /* Mencegah seleksi teks saat dragging */
+        user-select: none;
         cursor: grab;
       }
 
-      /* Kursor saat dragging */
       #cropContainer.dragging,
       #filterContainer.dragging {
         cursor: grabbing;
+      }
+
+      [x-cloak] {
+        display: none !important;
+      }
+
+      .transition-all {
+        transition: all 0.3s ease;
+      }
+
+      #cropContainer::-webkit-scrollbar,
+      #filterContainer::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+
+      #cropContainer::-webkit-scrollbar-track,
+      #filterContainer::-webkit-scrollbar-track {
+        background: #f5f5f5;
+        border-radius: 4px;
+      }
+
+      #cropContainer::-webkit-scrollbar-thumb,
+      #filterContainer::-webkit-scrollbar-thumb {
+        background: #d4d4d4;
+        border-radius: 4px;
+      }
+
+      #cropContainer::-webkit-scrollbar-thumb:hover,
+      #filterContainer::-webkit-scrollbar-thumb:hover {
+        background: #a3a3a3;
       }
     </style>
   </head>
@@ -245,6 +277,8 @@
     x-init="init()"
     @mouseup.window="stopDrag()"
     @mousemove.window="doDrag($event)"
+    @touchend.window="stopDrag()"
+    @touchmove.window="doTouchDrag($event)"
   >
     <div
       x-show="loading"
@@ -704,6 +738,7 @@
             style="min-height: 500px; max-height: 80vh"
             @wheel.prevent="handleZoom($event, 'mainCanvas')"
             @mousedown="startDrag($event, 'cropContainer')"
+            @touchstart="startTouchDrag($event, 'cropContainer')"
             :class="{'dragging': isDragging.cropContainer}"
           >
             <div
@@ -857,6 +892,7 @@
                 style="min-height: 400px; max-height: 80vh"
                 @wheel.prevent="handleZoom($event, 'filterCanvas')"
                 @mousedown="startDrag($event, 'filterContainer')"
+                @touchstart="startTouchDrag($event, 'filterContainer')"
                 :class="{'dragging': isDragging.filterContainer}"
               >
                 <canvas
@@ -1015,11 +1051,8 @@
           sharpness: 0,
           activePreset: null,
           toast: { show: false, message: "", type: "success" },
-
           showDeleteModal: false,
           deleteIndex: null,
-
-          // Variabel Zoom dan Drag
           zoomLevel: {
             mainCanvas: 1.0,
             filterCanvas: 1.0,
@@ -1027,8 +1060,6 @@
           zoomStep: 0.1,
           minZoom: 1.0,
           maxZoom: 4.0,
-
-          // Variabel Drag/Pan
           isDragging: {
             cropContainer: false,
             filterContainer: false,
@@ -1038,24 +1069,29 @@
           scrollLeft: 0,
           scrollTop: 0,
           currentContainerId: null,
-
-          // Variabel baru untuk fitur Kamera
           cameraStream: null,
           cameraIndex: 0,
 
           init() {
             this.initDraggableCorners();
             this.loadFromStorage();
+
+            document.addEventListener(
+              "touchmove",
+              (e) => {
+                if (e.target.closest(".corner")) {
+                  e.preventDefault();
+                }
+              },
+              { passive: false }
+            );
           },
 
-          // === DRAG/PAN LOGIC (Penyempurnaan) ===
           startDrag(event, containerId) {
-            // Hanya izinkan drag jika zoom > 1.0 ATAU jika tombol mouse bukan tombol kiri (mencegah konflik dengan drag sudut)
             if (event.target.closest(".corner") || event.button !== 0) return;
 
             const container = document.getElementById(containerId);
 
-            // Jika tidak ada scroll yang memungkinkan, jangan memulai drag
             if (
               container.scrollWidth <= container.clientWidth &&
               container.scrollHeight <= container.clientHeight
@@ -1069,7 +1105,6 @@
             this.scrollLeft = container.scrollLeft;
             this.scrollTop = container.scrollTop;
 
-            // Nonaktifkan default browser drag
             event.preventDefault();
           },
 
@@ -1082,11 +1117,9 @@
 
             const container = document.getElementById(this.currentContainerId);
 
-            // Hitung seberapa jauh mouse bergerak sejak mousedown
             const walkX = (event.pageX - this.startX) * 1;
             const walkY = (event.pageY - this.startY) * 1;
 
-            // Terapkan pergeseran (pan)
             container.scrollLeft = this.scrollLeft - walkX;
             container.scrollTop = this.scrollTop - walkY;
           },
@@ -1096,18 +1129,54 @@
             this.isDragging.filterContainer = false;
             this.currentContainerId = null;
           },
-          // === END DRAG/PAN LOGIC ===
 
-          // === ZOOM LOGIC (Penyempurnaan) ===
+          startTouchDrag(event, containerId) {
+            if (event.target.closest(".corner")) return;
+
+            const container = document.getElementById(containerId);
+            if (
+              container.scrollWidth <= container.clientWidth &&
+              container.scrollHeight <= container.clientHeight
+            )
+              return;
+
+            this.isDragging[containerId] = true;
+            this.currentContainerId = containerId;
+
+            const touch = event.touches[0];
+            this.startX = touch.pageX;
+            this.startY = touch.pageY;
+            this.scrollLeft = container.scrollLeft;
+            this.scrollTop = container.scrollTop;
+          },
+
+          doTouchDrag(event) {
+            if (
+              !this.currentContainerId ||
+              !this.isDragging[this.currentContainerId]
+            )
+              return;
+
+            const touch = event.touches[0];
+            const container = document.getElementById(this.currentContainerId);
+
+            const walkX = (touch.pageX - this.startX) * 1;
+            const walkY = (touch.pageY - this.startY) * 1;
+
+            container.scrollLeft = this.scrollLeft - walkX;
+            container.scrollTop = this.scrollTop - walkY;
+
+            event.preventDefault();
+          },
+
           handleZoom(event, canvasId) {
-            let delta = event.deltaY > 0 ? -1 : 1; // Mendeteksi arah scroll
+            let delta = event.deltaY > 0 ? -1 : 1;
             let currentZoom = this.zoomLevel[canvasId];
             let newZoom = currentZoom + delta * this.zoomStep;
 
-            // Batasi nilai zoom
             newZoom = Math.max(this.minZoom, Math.min(this.maxZoom, newZoom));
 
-            if (newZoom === currentZoom) return; // Tidak perlu update jika tidak ada perubahan
+            if (newZoom === currentZoom) return;
 
             this.zoomLevel[canvasId] = newZoom;
 
@@ -1116,45 +1185,42 @@
             const container = document.getElementById(containerId);
             const canvas = document.getElementById(canvasId);
 
-            // Dapatkan dimensi canvas sebenarnya (tanpa skala)
+            if (!container || !canvas) return;
+
             const naturalW = canvas.width;
             const naturalH = canvas.height;
 
-            // Dapatkan posisi kursor relatif terhadap elemen canvas yang sedang ditampilkan (ClientRect)
             const canvasRect = canvas.getBoundingClientRect();
             const mouseX = event.clientX - canvasRect.left;
             const mouseY = event.clientY - canvasRect.top;
 
-            // Hitung rasio scroll position baru (untuk menjaga fokus zoom)
-            // Posisi kursor relatif terhadap canvas yang di-zoom
             const scrollRatioX =
               (container.scrollLeft + mouseX) / (naturalW * currentZoom);
             const scrollRatioY =
               (container.scrollTop + mouseY) / (naturalH * currentZoom);
 
-            // Terapkan skala CSS
             const finalZoom = this.zoomLevel[canvasId];
 
             if (canvasId === "mainCanvas") {
-              // Di crop, kita skalakan wrap dan corner bergerak dengan skala wrap
               const wrap = document.getElementById("imageWrap");
-              wrap.style.width = naturalW * finalZoom + "px";
-              wrap.style.height = naturalH * finalZoom + "px";
+              if (wrap) {
+                wrap.style.width = naturalW * finalZoom + "px";
+                wrap.style.height = naturalH * finalZoom + "px";
+              }
             }
 
-            // Perbarui dimensi yang dihitung browser (untuk scroll)
             canvas.style.width = naturalW * finalZoom + "px";
             canvas.style.height = naturalH * finalZoom + "px";
 
-            // Hitung posisi scroll baru
             container.scrollLeft = naturalW * finalZoom * scrollRatioX - mouseX;
             container.scrollTop = naturalH * finalZoom * scrollRatioY - mouseY;
 
-            this.updateMaskFromCorners(); // Update posisi mask/corners jika di halaman crop
+            // Only update mask if on crop page
+            if (canvasId === "mainCanvas") {
+              this.updateMaskFromCorners();
+            }
           },
-          // === END ZOOM LOGIC ===
 
-          // === CAMERA LOGIC ===
           goToCamera() {
             this.page = "camera";
             this.$nextTick(() => this.startCamera());
@@ -1166,16 +1232,14 @@
 
             const video = document.getElementById("cameraFeed");
 
-            // Menghentikan stream lama jika ada
             this.stopCamera();
 
             try {
-              // Mengakses kamera belakang jika tersedia (environment)
               const constraints = {
                 video: {
-                  facingMode: "environment",
-                  width: { ideal: 1920 },
-                  height: { ideal: 1080 },
+                  facingMode: { ideal: "environment" },
+                  width: { ideal: 1920, max: 1920 },
+                  height: { ideal: 1080, max: 1080 },
                 },
               };
 
@@ -1221,19 +1285,16 @@
               return;
             }
 
-            // Menyesuaikan dimensi canvas dengan resolusi video
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             const ctx = canvas.getContext("2d");
 
-            // Menggambar frame video ke canvas
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-            const imageDataUrl = canvas.toDataURL("image/jpeg", 0.9); // Menggunakan JPEG untuk ukuran file lebih kecil
+            const imageDataUrl = canvas.toDataURL("image/jpeg", 0.9);
 
             this.stopCamera();
 
-            // Menambahkan gambar yang ditangkap ke galeri
             this.cameraIndex++;
             this.images.push({
               name: `Pindai-${this.cameraIndex}.jpg`,
@@ -1245,35 +1306,35 @@
             this.loading = false;
             this.showToast("Gambar ditangkap. Silakan sesuaikan batas.");
 
-            // Pindah langsung ke halaman crop dengan gambar yang baru ditangkap
             this.selectImage(this.images.length - 1);
             this.goToCrop();
           },
-          // === END CAMERA LOGIC ===
 
-          // === STORAGE ===
           async loadFromStorage() {
             try {
               const stored = localStorage.getItem("scanpro-docs");
               if (stored) {
-                // Hapus properti file dan canvas saat memuat dari storage
-                this.images = JSON.parse(stored).map((item) => ({
-                  name: item.name,
-                  url: item.url,
-                  file: null, // Jangan simpan File object
-                  canvas: null, // Jangan simpan data canvas mentah
-                }));
+                const parsed = JSON.parse(stored);
+                if (Array.isArray(parsed)) {
+                  this.images = parsed
+                    .map((item) => ({
+                      name: item.name || "Dokumen",
+                      url: item.url || "",
+                      file: null,
+                      canvas: null,
+                    }))
+                    .filter((item) => item.url);
+                }
               }
             } catch (e) {
               console.warn("Tidak ada dokumen tersimpan atau gagal memuat:", e);
-              // Handle corruption by clearing storage
               localStorage.removeItem("scanpro-docs");
+              this.images = [];
             }
           },
 
           async saveToStorage() {
             try {
-              // Hanya simpan properti yang diperlukan
               const saveableImages = this.images.map((item) => ({
                 name: item.name,
                 url: item.url,
@@ -1288,7 +1349,6 @@
             }
           },
 
-          // === TOAST ===
           showToast(message, type = "success") {
             this.toast = { show: true, message, type };
             setTimeout(() => {
@@ -1296,7 +1356,6 @@
             }, 3000);
           },
 
-          // === NAVIGATION ===
           goToGallery() {
             this.stopCamera();
             this.page = "gallery";
@@ -1306,18 +1365,17 @@
           goToCrop() {
             this.stopCamera();
             this.page = "crop";
-            this.zoomLevel.mainCanvas = 1.0; // Reset zoom
+            this.zoomLevel.mainCanvas = 1.0;
             this.$nextTick(() => this.prepareCrop());
           },
 
           goToFilter() {
             this.stopCamera();
             this.page = "filter";
-            this.zoomLevel.filterCanvas = 1.0; // Reset zoom
+            this.zoomLevel.filterCanvas = 1.0;
             this.$nextTick(() => this.prepareFilter());
           },
 
-          // === FILE HANDLING ===
           openFileInput() {
             document.getElementById("fileInput").click();
           },
@@ -1350,17 +1408,14 @@
             this.history = [];
           },
 
-          // Fungsi untuk menampilkan modal hapus
           promptRemoveImage(idx) {
             this.deleteIndex = idx;
             this.showDeleteModal = true;
           },
 
-          // Fungsi untuk menghapus setelah konfirmasi (Pembersihan URL Blob)
           async confirmRemoveImage() {
             const idx = this.deleteIndex;
             if (idx !== null && idx >= 0 && idx < this.images.length) {
-              // RevokeObjectURL untuk URL yang dibuat browser (kamera/unggah)
               if (this.images[idx].url.startsWith("blob:")) {
                 URL.revokeObjectURL(this.images[idx].url);
               }
@@ -1376,26 +1431,25 @@
             return this.images[this.currentIndex] || {};
           },
 
-          // === CROP/PERSPECTIVE LOGIC (OpenCV Maksimal & Pembersihan Memori) ===
           initDraggableCorners() {
             const self = this;
-            const wrap = document.getElementById("imageWrap");
-            const c = document.getElementById("mainCanvas");
 
             ["c1", "c2", "c3", "c4"].forEach((id) => {
               interact("#" + id).draggable({
                 listeners: {
                   move(event) {
                     const el = event.target;
+                    const wrap = document.getElementById("imageWrap");
+                    if (!wrap) return;
+
                     let left = parseFloat(el.getAttribute("data-left")) || 0;
                     let top = parseFloat(el.getAttribute("data-top")) || 0;
 
                     const newLeft = left + event.dx;
                     const newTop = top + event.dy;
 
-                    // Batasi gerakan ke dalam batas wrapper (yang sudah diskalakan)
-                    const maxLeft = wrap ? wrap.offsetWidth : 0;
-                    const maxTop = wrap ? wrap.offsetHeight : 0;
+                    const maxLeft = wrap.offsetWidth;
+                    const maxTop = wrap.offsetHeight;
 
                     const finalLeft = Math.max(0, Math.min(maxLeft, newLeft));
                     const finalTop = Math.max(0, Math.min(maxTop, newTop));
@@ -1417,7 +1471,7 @@
 
             this.loading = true;
             this.loadingText = "Memuat...";
-            this.zoomLevel.mainCanvas = 1.0; // Reset zoom saat memuat
+            this.zoomLevel.mainCanvas = 1.0;
 
             const img = new Image();
             img.src = this.current.url;
@@ -1425,23 +1479,22 @@
               const c = document.getElementById("mainCanvas");
               const wrap = document.getElementById("imageWrap");
 
-              // Set canvas dimensions to actual image size
               c.width = img.width;
               c.height = img.height;
               const ctx = c.getContext("2d", { willReadFrequently: true });
+              ctx.clearRect(0, 0, c.width, c.height);
               ctx.drawImage(img, 0, 0);
 
-              // Reset zoom CSS dan wrapper size
               c.style.width = "auto";
               c.style.height = "auto";
 
-              // Set wrapper size based on canvas's *displayed* size
-              // Perlu setTimeout untuk menunggu browser menghitung dimensi yang ditampilkan (clientWidth/Height)
               setTimeout(() => {
-                wrap.style.width = c.clientWidth + "px";
-                wrap.style.height = c.clientHeight + "px";
-                this.autoDetect(); // Panggil Auto Detect
-                this.loading = false;
+                if (wrap && c) {
+                  wrap.style.width = c.clientWidth + "px";
+                  wrap.style.height = c.clientHeight + "px";
+                  this.autoDetect();
+                  this.loading = false;
+                }
               }, 100);
             };
             img.onerror = () => {
@@ -1450,67 +1503,71 @@
             };
           },
 
-          // PERBAIKAN UX: Reset batas pangkas ke margin 4%
           resetCrop() {
             const c = document.getElementById("mainCanvas");
             if (!c) return;
 
-            // Reset Zoom
             this.zoomLevel.mainCanvas = 1.0;
             const wrap = document.getElementById("imageWrap");
-            wrap.style.width = c.clientWidth + "px";
-            wrap.style.height = c.clientHeight + "px";
+            if (wrap && c) {
+              wrap.style.width = c.clientWidth + "px";
+              wrap.style.height = c.clientHeight + "px";
+            }
 
             const container = document.getElementById("cropContainer");
             container.scrollLeft = 0;
             container.scrollTop = 0;
 
-            this.simpleAutoDetect(c); // Menggunakan deteksi margin sederhana untuk reset yang konsisten
+            this.simpleAutoDetect(c);
             this.updateMaskFromCorners();
             this.showToast("Batas pangkas diatur ulang.");
           },
 
           updateMaskFromCorners() {
             const c = document.getElementById("mainCanvas");
-            if (!c) return;
-
             const wrap = document.getElementById("imageWrap");
-            const displayW = wrap.clientWidth; // Menggunakan offsetWidth/Height karena sudah diskalakan
+            const maskPolygon = document.getElementById("maskPolygon");
+
+            // Only update if we're on the crop page with all required elements
+            if (!c || !wrap || !maskPolygon) return;
+
+            const displayW = wrap.clientWidth;
             const displayH = wrap.clientHeight;
+
+            // Validate dimensions
+            if (displayW <= 0 || displayH <= 0) return;
 
             const getDisplayCoords = (id) => {
               const el = document.getElementById(id);
+              if (!el) return { x: 0, y: 0 };
               return {
                 x: parseFloat(el.getAttribute("data-left")) || 0,
                 y: parseFloat(el.getAttribute("data-top")) || 0,
               };
             };
 
-            // Ambil koordinat display (sudah diskalakan)
             const p1 = getDisplayCoords("c1");
             const p2 = getDisplayCoords("c2");
             const p3 = getDisplayCoords("c3");
             const p4 = getDisplayCoords("c4");
 
-            const maskPolygon = document.getElementById("maskPolygon");
-            if (maskPolygon) {
-              // Menggunakan koordinat relatif terhadap wrapper (sudah mencakup zoom)
-              const points = [p1, p2, p3, p4]
-                .map((p) => {
-                  // Konversi koordinat absolut di wrapper (px) menjadi persentase dari dimensi wrapper
-                  const percX = (p.x / displayW) * 100;
-                  const percY = (p.y / displayH) * 100;
-                  return `${percX},${percY}`;
-                })
-                .join(" ");
+            const points = [p1, p2, p3, p4]
+              .map((p) => {
+                const percX = (p.x / displayW) * 100;
+                const percY = (p.y / displayH) * 100;
 
-              maskPolygon.setAttribute("points", points);
-            }
+                // Validate coordinates
+                if (!isFinite(percX) || !isFinite(percY)) {
+                  return "0,0";
+                }
+
+                return `${percX},${percY}`;
+              })
+              .join(" ");
+
+            maskPolygon.setAttribute("points", points);
           },
 
-          /**
-           * Fungsi deteksi otomatis menggunakan OpenCV (Maksimal)
-           */
           autoDetect() {
             const c = document.getElementById("mainCanvas");
             if (!c) return;
@@ -1519,7 +1576,6 @@
               this.loading = true;
               this.loadingText = "Deteksi otomatis dokumen...";
 
-              // Variabel yang akan dibersihkan
               let src = null;
               let dst = null;
               let gray = null;
@@ -1535,7 +1591,6 @@
                 gray = new cv.Mat();
                 cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
 
-                // 1. Gaussian Blur untuk mengurangi noise
                 cv.GaussianBlur(
                   gray,
                   gray,
@@ -1545,7 +1600,6 @@
                   cv.BORDER_DEFAULT
                 );
 
-                // 2. Otsu Thresholding (Sangat efektif untuk dokumen)
                 cv.threshold(
                   gray,
                   dst,
@@ -1554,10 +1608,8 @@
                   cv.THRESH_BINARY + cv.THRESH_OTSU
                 );
 
-                // 3. Canny Edge Detection
                 cv.Canny(dst, dst, 50, 150, 3, false);
 
-                // 4. Dilasi untuk menutup celah pada tepi (kernel 7x7)
                 kernel = cv.Mat.ones(7, 7, cv.CV_8U);
                 cv.dilate(dst, dst, kernel);
 
@@ -1573,21 +1625,17 @@
 
                 let maxArea = 0;
 
-                // Batas area minimum (10% dari total area gambar)
                 const minAreaThreshold = c.width * c.height * 0.1;
 
-                // Cari kontur dengan area terbesar yang memiliki 4 sudut
                 for (let i = 0; i < contours.size(); ++i) {
                   let contour = contours.get(i);
                   let area = cv.contourArea(contour);
 
                   if (area > maxArea && area > minAreaThreshold) {
                     let perimeter = cv.arcLength(contour, true);
-                    approx = new cv.Mat(); // approx dibuat di dalam loop
-                    // Epsilon 0.03 (longgar) untuk toleransi kelengkungan
-                    cv.approxPolyDP(contour, approx, 0.03 * perimeter, true);
+                    approx = new cv.Mat();
+                    cv.approxPolyDP(contour, approx, 0.02 * perimeter, true);
 
-                    // Jika kontur memiliki 4 sudut
                     if (approx.rows === 4) {
                       maxArea = area;
                       if (bestContour) bestContour.delete();
@@ -1603,7 +1651,6 @@
                   const scaleX = c.clientWidth / c.width;
                   const scaleY = c.clientHeight / c.height;
 
-                  // Urutkan 4 sudut
                   const rawCorners = [];
                   for (let i = 0; i < 4; i++) {
                     rawCorners.push({
@@ -1614,10 +1661,9 @@
 
                   const sortedCorners = this.sortCorners(rawCorners);
 
-                  // Set sudut di tampilan (menggunakan skala display/clientWidth)
                   const setCorner = (id, x, y) => {
                     const el = document.getElementById(id);
-                    const finalX = x * scaleX * this.zoomLevel.mainCanvas; // Koordinat di-zoom
+                    const finalX = x * scaleX * this.zoomLevel.mainCanvas;
                     const finalY = y * scaleY * this.zoomLevel.mainCanvas;
 
                     el.style.left = finalX + "px";
@@ -1626,16 +1672,16 @@
                     el.setAttribute("data-top", finalY);
                   };
 
-                  setCorner("c1", sortedCorners[0].x, sortedCorners[0].y); // Top-Left
-                  setCorner("c2", sortedCorners[1].x, sortedCorners[1].y); // Top-Right
-                  setCorner("c3", sortedCorners[2].x, sortedCorners[2].y); // Bottom-Right
-                  setCorner("c4", sortedCorners[3].x, sortedCorners[3].y); // Bottom-Left
+                  setCorner("c1", sortedCorners[0].x, sortedCorners[0].y);
+                  setCorner("c2", sortedCorners[1].x, sortedCorners[1].y);
+                  setCorner("c3", sortedCorners[2].x, sortedCorners[2].y);
+                  setCorner("c4", sortedCorners[3].x, sortedCorners[3].y);
 
                   this.showToast("Batas dokumen terdeteksi otomatis.");
                 } else {
                   this.simpleAutoDetect(c);
                   this.showToast(
-                    "Gagal deteksi otomatis. Menggunakan batas standar. **Coba ratakan dokumen Anda.**"
+                    "Gagal deteksi. Gunakan batas standar atau sesuaikan manual."
                   );
                 }
               } catch (e) {
@@ -1646,7 +1692,6 @@
                   "error"
                 );
               } finally {
-                // Pembersihan memori OpenCV (Penting!)
                 if (src) src.delete();
                 if (dst) dst.delete();
                 if (gray) gray.delete();
@@ -1665,46 +1710,44 @@
             this.updateMaskFromCorners();
           },
 
-          /**
-           * Fungsi pembantu untuk mengurutkan sudut (diperlukan untuk Homografi)
-           * Urutan: Top-Left, Top-Right, Bottom-Right, Bottom-Left (TL, TR, BR, BL)
-           */
           sortCorners(points) {
             if (points.length !== 4) return points;
 
-            // Urutkan berdasarkan koordinat y (untuk membagi menjadi top dan bottom)
             points.sort((a, b) => a.y - b.y);
 
             const top = points.slice(0, 2);
             const bottom = points.slice(2, 4);
 
-            // Urutkan baris atas (top) berdasarkan koordinat x: top[0]=TL, top[1]=TR
             top.sort((a, b) => a.x - b.x);
 
-            // Urutkan baris bawah (bottom) berdasarkan koordinat x: bottom[0]=BL, bottom[1]=BR
-            bottom.sort((a, b) => b.x - a.x); // Urutan terbalik untuk bottom: [BR, BL]
+            bottom.sort((a, b) => b.x - a.x);
 
-            // Urutan akhir: TL, TR, BR, BL
-            return [top[0], top[1], bottom[0], bottom[1]]; // Diperbaiki urutan bottom[0] dan bottom[1]
+            return [top[0], top[1], bottom[0], bottom[1]];
           },
 
-          /**
-           * Fallback deteksi margin tetap (sangat dasar).
-           */
           simpleAutoDetect(c) {
             const wrap = document.getElementById("imageWrap");
+            if (!wrap) return;
+
             const wDisplay = wrap.clientWidth;
             const hDisplay = wrap.clientHeight;
+
+            if (wDisplay <= 0 || hDisplay <= 0) return;
 
             const marginW = wDisplay * 0.04;
             const marginH = hDisplay * 0.04;
 
             const setCorner = (id, left, top) => {
               const el = document.getElementById(id);
-              el.style.left = left * this.zoomLevel.mainCanvas + "px";
-              el.style.top = top * this.zoomLevel.mainCanvas + "px";
-              el.setAttribute("data-left", left * this.zoomLevel.mainCanvas);
-              el.setAttribute("data-top", top * this.zoomLevel.mainCanvas);
+              if (!el) return;
+
+              const finalLeft = left * this.zoomLevel.mainCanvas;
+              const finalTop = top * this.zoomLevel.mainCanvas;
+
+              el.style.left = finalLeft + "px";
+              el.style.top = finalTop + "px";
+              el.setAttribute("data-left", finalLeft);
+              el.setAttribute("data-top", finalTop);
             };
 
             setCorner("c1", marginW, marginH);
@@ -1713,9 +1756,6 @@
             setCorner("c4", marginW, hDisplay - marginH);
           },
 
-          /**
-           * Fungsi inti untuk memproses Koreksi Perspektif.
-           */
           async processCropAndPerspective(isAuto = false) {
             return new Promise((resolve) => {
               const c = document.getElementById("mainCanvas");
@@ -1730,12 +1770,9 @@
 
               const getCoords = (id) => {
                 const el = document.getElementById(id);
-                // Skala dari display ke resolusi gambar asli
                 const scaleX = c.width / c.clientWidth;
                 const scaleY = c.height / c.clientHeight;
 
-                // Koordinat yang disimpan di data-left/top SUDAH DISKALAKAN oleh zoomLevel,
-                // jadi kita bagi dengan zoomLevel untuk mendapatkan koordinat di resolusi 1.0
                 const leftAt1x =
                   (parseFloat(el.getAttribute("data-left")) || 0) /
                   this.zoomLevel.mainCanvas;
@@ -1749,7 +1786,6 @@
                 };
               };
 
-              // Urutan titik: Top-Left, Top-Right, Bottom-Right, Bottom-Left
               const p1 = getCoords("c1");
               const p2 = getCoords("c2");
               const p3 = getCoords("c3");
@@ -1758,13 +1794,12 @@
 
               const warpedDataUrl = this.applyPerspectiveWarp(c, corners);
 
-              // Pembersihan URL blob lama sebelum diganti dengan yang baru
               if (this.images[this.currentIndex].url.startsWith("blob:")) {
                 URL.revokeObjectURL(this.images[this.currentIndex].url);
               }
 
               this.images[this.currentIndex].url = warpedDataUrl;
-              this.images[this.currentIndex].canvas = warpedDataUrl; // Simpan juga sebagai canvas state awal
+              this.images[this.currentIndex].canvas = warpedDataUrl;
 
               this.loading = false;
 
@@ -1777,50 +1812,43 @@
             });
           },
 
-          /**
-           * Menerapkan Perspective Warp menggunakan OpenCV.js atau Fallback. (Pembersihan Memori)
-           */
           applyPerspectiveWarp(sourceCanvas, corners) {
             const w1 = Math.hypot(
               corners[0].x - corners[1].x,
               corners[0].y - corners[1].y
-            ); // Jarak Top (TL ke TR)
+            );
             const w2 = Math.hypot(
               corners[3].x - corners[2].x,
               corners[3].y - corners[2].y
-            ); // Jarak Bottom (BL ke BR)
+            );
             const outputWidth = Math.max(w1, w2);
 
             const h1 = Math.hypot(
               corners[0].x - corners[3].x,
               corners[0].y - corners[3].y
-            ); // Jarak Left (TL ke BL)
+            );
             const h2 = Math.hypot(
               corners[1].x - corners[2].x,
               corners[1].y - corners[2].y
-            ); // Jarak Right (TR ke BR)
+            );
             const outputHeight = Math.max(h1, h2);
 
             const destCanvas = document.createElement("canvas");
             const destCtx = destCanvas.getContext("2d");
 
-            // --- KOREKSI PERSPEKTIF PROFESIONAL DENGAN OPENCV ---
             if (typeof cv !== "undefined" && cvReady) {
               console.log("Menggunakan OpenCV untuk Perspective Transform.");
 
-              // Variabel OpenCV
               let srcMat = null;
               let dstMat = null;
               let srcTri = null;
               let dstTri = null;
               let M = null;
 
-              // Periksa apakah dimensi output valid
               if (outputWidth <= 10 || outputHeight <= 10) {
                 console.error(
                   "Dimensi output tidak valid. Kembali ke fallback."
                 );
-                // Lanjutkan ke Fallback Bounding Box
               } else {
                 try {
                   destCanvas.width = outputWidth;
@@ -1829,19 +1857,17 @@
                   srcMat = cv.imread(sourceCanvas);
                   dstMat = new cv.Mat();
 
-                  // Matriks Sumber (4 titik dari kursor) - URUTAN: TL, TR, BR, BL
                   srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
                     corners[0].x,
-                    corners[0].y, // TL
+                    corners[0].y,
                     corners[1].x,
-                    corners[1].y, // TR
+                    corners[1].y,
                     corners[2].x,
-                    corners[2].y, // BR
+                    corners[2].y,
                     corners[3].x,
-                    corners[3].y, // BL
+                    corners[3].y,
                   ]);
 
-                  // Matriks Tujuan (persegi panjang sempurna)
                   dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
                     0,
                     0,
@@ -1861,15 +1887,12 @@
                     new cv.Size(outputWidth, outputHeight)
                   );
 
-                  // Tulis hasilnya ke canvas
                   cv.imshow(destCanvas, dstMat);
 
                   return destCanvas.toDataURL("image/png");
                 } catch (e) {
                   console.error("OpenCV Perspective Warp Gagal:", e);
-                  // Lanjutkan ke Fallback Bounding Box
                 } finally {
-                  // Bersihkan memori (Penting!)
                   if (srcMat) srcMat.delete();
                   if (dstMat) dstMat.delete();
                   if (srcTri) srcTri.delete();
@@ -1879,7 +1902,6 @@
               }
             }
 
-            // FALLBACK: Cropping Bounding Box (JIKA OPENCV GAGAL)
             console.warn(
               "Menggunakan Cropping Bounding Box Sederhana (Fallback)."
             );
@@ -1922,7 +1944,6 @@
             this.loadingText = "Mendeteksi & memindai...";
 
             this.autoDetect();
-            // Memberi waktu agar autoDetect selesai memperbarui UI sebelum crop dimulai
             await new Promise((r) => setTimeout(r, 100));
 
             await this.processCropAndPerspective(true);
@@ -1934,8 +1955,6 @@
             });
           },
 
-          // === FILTER LOGIC ===
-
           prepareFilter() {
             const src =
               this.current && this.current.url ? this.current.url : null;
@@ -1943,11 +1962,11 @@
 
             this.loading = true;
             this.loadingText = "Memuat...";
-            this.zoomLevel.filterCanvas = 1.0; // Reset zoom saat memuat
+            this.zoomLevel.filterCanvas = 1.0;
 
             if (this.history.length === 0 || this.history[0] !== src) {
-              this.history = [src]; // Set base history
-              this.resetAdjustments(); // Reset slider jika gambar baru dimuat
+              this.history = [src];
+              this.resetAdjustments();
             }
 
             const img = new Image();
@@ -1977,10 +1996,10 @@
 
             switch (preset) {
               case "original":
-                this.applySliders(); // Cukup dengan slider 0
+                this.applySliders();
                 break;
               case "clean":
-                this.applyCleanDocument(); // Fungsi clean yang lebih kompleks
+                this.applyCleanDocument();
                 return;
               default:
                 this.activePreset = "original";
@@ -2016,8 +2035,6 @@
               const imageData = ctx.getImageData(0, 0, c.width, c.height);
               const data = imageData.data;
 
-              // Step 1: Advanced shadow removal (Adaptive Illumination)
-              // Logika Adaptive Illumination (dibiarkan, cukup baik)
               const blockSize = 30;
               const widthBlocks = Math.ceil(c.width / blockSize);
               const heightBlocks = Math.ceil(c.height / blockSize);
@@ -2059,12 +2076,10 @@
                   allBrightness.push(brightnessMap[by][bx]);
                 }
               }
-              // Gunakan 10% kecerahan tertinggi
               allBrightness.sort((a, b) => b - a);
               const targetBrightness =
-                allBrightness[Math.floor(allBrightness.length * 0.1)] || 255; // Default 255
+                allBrightness[Math.floor(allBrightness.length * 0.1)] || 255;
 
-              // Adaptive illumination correction with bilinear interpolation
               for (let y = 0; y < c.height; y++) {
                 for (let x = 0; x < c.width; x++) {
                   const i = (y * c.width + x) * 4;
@@ -2076,7 +2091,6 @@
 
                   let localBright;
 
-                  // Bilinear Interpolation
                   if (bx < widthBlocks - 1 && by < heightBlocks - 1) {
                     const b00 = brightnessMap[by][bx];
                     const b10 = brightnessMap[by][bx + 1];
@@ -2094,7 +2108,6 @@
 
                   const correctionFactor =
                     localBright > 0 ? targetBrightness / localBright : 1;
-                  // Batas faktor koreksi
                   const limitedFactor = Math.min(
                     Math.max(correctionFactor, 0.8),
                     2.0
@@ -2106,7 +2119,6 @@
                 }
               }
 
-              // Step 2: White balance (simpler gray world)
               let totalR = 0,
                 totalG = 0,
                 totalB = 0,
@@ -2133,27 +2145,22 @@
                 data[i + 2] = data[i + 2] * scaleB;
               }
 
-              // Step 3: Strong contrast and brightness boost (Adjusted for better whites)
-              const contrastFactor = 1.5; // Agak direndahkan agar tidak terlalu keras
-              const brightnessBoost = 40; // Agak direndahkan
+              const contrastFactor = 1.5;
+              const brightnessBoost = 40;
               for (let i = 0; i < data.length; i += 4) {
-                // Apply contrast
                 data[i] = (data[i] - 128) * contrastFactor + 128;
                 data[i + 1] = (data[i + 1] - 128) * contrastFactor + 128;
                 data[i + 2] = (data[i + 2] - 128) * contrastFactor + 128;
 
-                // Apply brightness
                 data[i] += brightnessBoost;
                 data[i + 1] += brightnessBoost;
                 data[i + 2] += brightnessBoost;
 
-                // Clamp values
                 data[i] = Math.max(0, Math.min(255, data[i]));
                 data[i + 1] = Math.max(0, Math.min(255, data[i + 1]));
                 data[i + 2] = Math.max(0, Math.min(255, data[i + 2]));
               }
 
-              // Step 4: Subtle sharpening
               const sharpKernel = [0, -1, 0, -1, 5, -1, 0, -1, 0];
               const tempData = new Uint8ClampedArray(data);
 
@@ -2186,7 +2193,7 @@
                 "error"
               );
             };
-            img.src = baseSrc; // Memulai pemuatan gambar
+            img.src = baseSrc;
           },
 
           resetAdjustments() {
@@ -2203,10 +2210,9 @@
 
             const ctx = c.getContext("2d", { willReadFrequently: true });
             const img = new Image();
-            const baseSrc = this.history[0]; // Selalu dari gambar base
+            const baseSrc = this.history[0];
 
             img.onload = () => {
-              // 1. Gambar ulang gambar dasar
               ctx.clearRect(0, 0, c.width, c.height);
               ctx.drawImage(img, 0, 0);
 
@@ -2217,31 +2223,26 @@
               const cst = this.contrast / 100;
               const s = this.saturation / 100;
               const sharp = this.sharpness / 100;
-              const factor = 1 + cst;
+              const factor = Math.max(0.1, 1 + cst);
 
-              // Apply basic adjustments
               for (let i = 0; i < data.length; i += 4) {
                 let r = data[i],
                   g = data[i + 1],
                   bl = data[i + 2];
 
-                // Brightness
                 r += b;
                 g += b;
                 bl += b;
 
-                // Contrast
                 r = (r - 128) * factor + 128;
                 g = (g - 128) * factor + 128;
                 bl = (bl - 128) * factor + 128;
 
-                // Saturation
                 const lum = 0.299 * r + 0.587 * g + 0.114 * bl;
                 r = lum + (r - lum) * (1 + s);
                 g = lum + (g - lum) * (1 + s);
                 bl = lum + (bl - lum) * (1 + s);
 
-                // Sharpness enhancement
                 if (sharp > 0) {
                   const enhancement = sharp * 0.4;
                   r += (r - lum) * enhancement;
@@ -2260,7 +2261,7 @@
             img.onerror = () => {
               console.error("Gagal memuat gambar dasar untuk slider.");
             };
-            img.src = baseSrc; // Memulai pemuatan gambar
+            img.src = baseSrc;
           },
 
           pushHistory(isFinalStep = true) {
@@ -2269,10 +2270,8 @@
             const c = document.getElementById("filterCanvas");
             if (!c) return;
 
-            // Simpan Data URL hasil penyesuaian slider
             const data = c.toDataURL("image/png");
 
-            // Hapus langkah non-base sebelumnya (langkah ke-2) jika ada
             if (this.history.length > 1) {
               this.history.pop();
             }
@@ -2287,7 +2286,6 @@
               this.loadingText = "Mengurungkan...";
               this.history.pop();
 
-              // Reset slider karena status gambar berubah
               this.resetAdjustments();
 
               const last = this.history[this.history.length - 1];
@@ -2338,13 +2336,12 @@
 
             const data = c.toDataURL("image/png");
 
-            // Pembersihan URL blob lama sebelum diganti dengan yang baru
             if (this.images[this.currentIndex].url.startsWith("blob:")) {
               URL.revokeObjectURL(this.images[this.currentIndex].url);
             }
 
             this.images[this.currentIndex].url = data;
-            this.images[this.currentIndex].canvas = data; // Simpan juga canvas state
+            this.images[this.currentIndex].canvas = data;
 
             this.history = [];
             this.loading = false;
